@@ -200,7 +200,6 @@ module Tptp = struct
       (Ty : Dolmen.Intf.Ty.Tptp_Base with type t = Type.Ty.t)
       (T : Dolmen.Intf.Term.Tptp_Tff_Core with type t = Type.T.t) = struct
 
-    let mk_or a b = T._or [a; b]
     let mk_and a b = T._and [a; b]
 
     let parse _version env s =
@@ -229,7 +228,9 @@ module Tptp = struct
       | Type.Builtin Ast.Not ->
         Type.builtin_term (Base.term_app1 (module Type) env s T.neg)
       | Type.Builtin Ast.Or ->
-        Type.builtin_term (Base.term_app2 (module Type) env s mk_or)
+        (* tptp clauses are transformed into quantified disjunction when needed,
+           and these disjunction may not be binary. *)
+        Type.builtin_term (Base.term_app_list (module Type) env s T._or)
       | Type.Builtin Ast.And ->
         Type.builtin_term (Base.term_app2 (module Type) env s mk_and)
       | Type.Builtin Ast.Xor ->
@@ -638,9 +639,8 @@ module Smtlib2 = struct
           | '.' ->
             begin match version with
               | `Script _ ->
-                `Reserved (
-                  "solver-generated function symbols other than abstract values",
-                  `Solver)
+                `Reserved (`Solver
+                  "solver-generated function symbols other than abstract values")
               (* this is effectively a namespace reserved for solver-generated symbols
                  in their output. In such case, we expect these symbols to be explicitly
                  bound/defined somewher, so we need not do anything specific. *)
@@ -648,7 +648,7 @@ module Smtlib2 = struct
             end
           | '@' ->
             begin match version with
-              | `Script _ -> `Reserved ("abstract values in models", `Solver)
+              | `Script _ -> `Reserved (`Solver "abstract values in models")
               | `Response _ ->
                 (* the var infer does not matter *)
                 let var_infer = Type.var_infer env in
@@ -666,7 +666,7 @@ module Smtlib2 = struct
                   infer_type_csts = false;
                   infer_term_csts = Wildcard Any_in_scope;
                 } in
-                `Infer ("abstract values (i.e. constants)", var_infer, sym_infer)
+                `Infer (`Reserved (`Solver "abstract values (i.e. constants)"), var_infer, sym_infer)
             end
           | _ -> `Not_found
         end

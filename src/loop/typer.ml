@@ -133,8 +133,14 @@ let print_reason ?(already=false) fmt r =
   match (r : T.reason) with
   | Builtin ->
     Format.fprintf fmt "is%a defined by a builtin theory" pp_already ()
-  | Reserved reason ->
+  | Reserved (Strict, reason) ->
     Format.fprintf fmt "is reserved for %a" Format.pp_print_text reason
+  | Reserved (Model_completion, reason) ->
+    Format.fprintf fmt "is reserved for %a.@ %a"
+      Format.pp_print_text reason
+      Format.pp_print_text
+      "Therefore, the definition of the model corner case would take \
+       priority and prevent defining a value for this constant."
   | Bound (file, ast) ->
     Format.fprintf fmt "was%a bound at %a"
       pp_already () Dolmen.Std.Loc.fmt_pos (Dolmen.Std.Loc.loc file ast.loc)
@@ -242,6 +248,10 @@ let rec print_wildcard_origin_loc env fmt = function
       (pp_wrap Dolmen.Std.Id.print) variable
       Dolmen.Std.Loc.fmt_pos loc
 
+let print_reserved fmt = function
+  | `Solver reason ->
+    Format.fprintf fmt "to be used by solvers for %a"
+      Format.pp_print_text reason
 
 (* Hint printers *)
 (* ************************************************************************ *)
@@ -254,6 +264,10 @@ let fo_hint _ =
 let text_hint = function
   | "" -> None
   | msg -> Some (Format.dprintf "%a" Format.pp_print_text msg)
+
+let text_hint2 = function
+  | _, "" -> None
+  | _, msg -> Some (Format.dprintf "%a" Format.pp_print_text msg)
 
 let poly_hint (c, expected, actual) =
   let vars, params, _ = Dolmen.Std.Expr.(Ty.poly_sig @@ Term.Const.ty c) in
@@ -375,12 +389,13 @@ let redundant_pattern =
           "This pattern is useless (i.e. it is made redundant by earlier patterns)")
     ~name:"Redundant pattern" ()
 
-let almost_linear =
-  Report.Warning.mk ~code ~mnemonic:"almost-linear-expr"
-    ~message:(fun fmt _ ->
+let bad_arith_expr =
+  Report.Warning.mk ~code ~mnemonic:"bad-arith-expr"
+    ~message:(fun fmt (config, _) ->
         Format.fprintf fmt
-          "This is a non-linear expression according to the smtlib spec.")
-    ~hints:[text_hint]
+          "This expression does not conform to the specification for %a arithmetic"
+          Dolmen_type.Arith.Smtlib2.print_config config)
+    ~hints:[text_hint2]
     ~name:"Non-linear expression in linear arithmetic" ()
 
 let array_extension =
@@ -834,12 +849,13 @@ let forbidden_array_sort =
     ~hints:[text_hint]
     ~name:"Forbidden array sort" ()
 
-let non_linear_expression =
-  Report.Error.mk ~code ~mnemonic:"non-linear-expr"
-    ~message:(fun fmt _ ->
-        Format.fprintf fmt "Non-linear expressions are forbidden by the logic.")
-    ~hints:[text_hint]
-    ~name:"Non linear expression in linear arithmetic logic" ()
+let forbidden_arith_expr =
+  Report.Error.mk ~code ~mnemonic:"forbidden-arith"
+    ~message:(fun fmt (config, _msg) ->
+        Format.fprintf fmt "Forbidden expression in %a arithmetic"
+          Dolmen_type.Arith.Smtlib2.print_config config)
+    ~hints:[text_hint2]
+    ~name:"Forbidden arithmetic expression" ()
 
 let bitvector_app_expected_nat_lit =
   Report.Error.mk ~code ~mnemonic:"bitvector-app-expected-nat-lit"
@@ -966,13 +982,11 @@ let empty_pop =
 
 let reserved =
   Report.Error.mk ~code ~mnemonic:"reserved"
-    ~message:(fun fmt (id, reason) ->
+    ~message:(fun fmt (id, reserved) ->
         Format.fprintf fmt
-          "@[<hov>Reserved: %a is reserved for %a.@ @[<hov>%a@]"
+          "@[<hov>Reserved: %a is reserved %a."
           (pp_wrap Dolmen.Std.Id.print) id
-          Format.pp_print_text reason Format.pp_print_text
-          "Therefore, the definition of the model corner case would take \
-           priority and prevent defining a value for this constant.")
+          print_reserved reserved)
     ~name:"Shadowing of reserved identifier" ()
 
 let incorrect_sexpression =
@@ -1132,9 +1146,8 @@ module Typer(State : State.S) = struct
   let report_warning ~input st (T.Warning (env, fragment, w)) =
     let loc = T.fragment_loc env fragment in
     match w with
-    | T.Shadowing (id, `Reserved reason, _)
-      when typing_logic input && State.get_or ~default:false check_model st ->
-      error ~input ~loc st reserved (id, reason)
+    | T.Shadowing (id, `Reserved ((`Solver _) as r), _) when typing_logic input ->
+      error ~input ~loc st reserved (id, r)
 
     (* typer warnings that are actually errors given some languages spec *)
     | T.Shadowing (id, ((`Builtin `Term | `Not_found) as old), `Variable _)
@@ -1161,10 +1174,10 @@ module Typer(State : State.S) = struct
       warn ~input ~loc st redundant_pattern pattern
     | Smtlib2_Arrays.Extension id ->
       warn ~input ~loc st array_extension id
-    | Smtlib2_Ints.Restriction msg
-    | Smtlib2_Reals.Restriction msg
-    | Smtlib2_Reals_Ints.Restriction msg ->
-      warn ~input ~loc st almost_linear msg
+    | Smtlib2_Ints.Restriction (config, msg)
+    | Smtlib2_Reals.Restriction (config, msg)
+    | Smtlib2_Reals_Ints.Restriction (config, msg) ->
+      warn ~input ~loc st bad_arith_expr (config, msg)
     | _ ->
       warn ~input ~loc st unknown_warning
         (Obj.Extension_constructor.(name (of_val w)))
@@ -1278,10 +1291,10 @@ module Typer(State : State.S) = struct
     | Smtlib2_Arrays.Forbidden msg ->
       error ~input ~loc st forbidden_array_sort msg
     (* Smtlib Arithmetic errors *)
-    | Smtlib2_Ints.Forbidden msg
-    | Smtlib2_Reals.Forbidden msg
-    | Smtlib2_Reals_Ints.Forbidden msg ->
-      error ~input ~loc st non_linear_expression msg
+    | Smtlib2_Ints.Forbidden (config, msg)
+    | Smtlib2_Reals.Forbidden (config, msg)
+    | Smtlib2_Reals_Ints.Forbidden (config, msg) ->
+      error ~input ~loc st forbidden_arith_expr (config, msg)
     | Smtlib2_Reals_Ints.Expected_arith_type ty ->
       error ~input ~loc st expected_arith_type
         (ty, "The stmlib Reals_Ints theory requires an arithmetic type in order to \
@@ -1917,7 +1930,7 @@ module Make
     | `Get_assignment
     | `Get_assertions
     | `Echo of string
-    | `Plain of Dolmen.Std.Statement.term
+    | `Other of Dolmen.Std.Id.t * Dolmen.Std.Statement.term list
   ]
 
   type set_info = [
@@ -2020,9 +2033,10 @@ module Make
       Format.fprintf fmt "@[<hov 2>get-assertions@]"
     | `Echo s ->
       Format.fprintf fmt "@[<hov 2>echo: %s@]" s
-    | `Plain t ->
-      Format.fprintf fmt "@[<hov 2>plain: %a@]"
-        Dolmen.Std.Term.print t
+    | `Other (name, args) ->
+      Format.fprintf fmt "@[<hov 2>other/%a: %a@]"
+        Dolmen.Std.Id.print name
+        (Format.pp_print_list Dolmen.Std.Term.print) args
     | `Set_logic (s, logic) ->
       Format.fprintf fmt
         "@[<hov 2>set-logic: %s =@ %a@]"
@@ -2131,8 +2145,8 @@ module Make
 
     (* Plain statements
        TODO: allow the `plain` function to return a meaningful value *)
-    | { S.descr = S.Plain t; loc; attrs; _ } ->
-      st, (simple (other_id c) loc attrs (`Plain t))
+    | { S.descr = S.Other { name; args; }; loc; attrs; _ } ->
+      st, (simple (other_id c) loc attrs (`Other (name, args)))
 
     (* Hypotheses and goal statements *)
     | { S.descr = S.Prove { hyps; goals }; loc; attrs; _ } ->

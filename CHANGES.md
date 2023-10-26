@@ -1,4 +1,37 @@
 
+next
+----
+
+### UI
+
+- Improved the printing of some data-structures (PR#190)
+
+### Std
+
+- Replace the `Plain` statement with the `Other` statement,
+  which is a more general version (PR#190)
+
+### Parsing
+
+- Add parsing extensions for the smtlib2 language (PR#190, PR#194)
+- Better split elements of clauses in `cnf` TPTP statements (PR#190)
+- Ensure illegal chars raise the correct error during lexing
+  (Issue#191, PR#192)
+
+### Typing
+
+- Enforce some missing constraints on bitvectors
+  indexes and sizes for the smtlib2 BV theory (PR#172, PR#175)
+- Slightly improve wording for errors and warnings concerning
+  non linearity and other arithmetic restrictions (PR#184)
+- More information for reserved Id, resulting in more precise
+  errors when smt2 scripts use reserved ids (PR#193)
+
+### Loop
+
+- Add the String theory to the ALL logic of smtlib2 (PR#182)
+
+
 v0.9
 ----
 
