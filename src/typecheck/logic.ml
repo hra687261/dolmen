@@ -336,6 +336,22 @@ module Smtlib2 = struct
       arith       : arith_config;
     }
 
+    let all = {
+      free_sorts      = true;
+      free_functions  = true;
+      quantifiers = true;
+      datatypes   = true;
+      bitvectors  = true;
+      bitv_lits   = true;
+      floats      = true;
+      strings     = true;
+      arrays      = Some All;
+      ints        = true;
+      int_lits    = true;
+      reals       = true;
+      arith       = No_constraint;
+    }
+
     (* simple helpers *)
 
     let add_free_sort acc =
@@ -474,7 +490,7 @@ module Smtlib2 = struct
                 end
               | _ -> assert false (* incorrect use of builtin B.Array *)
             end
-          | _ -> assert false (* Non-smtlib Builtin *)
+          | _ -> all (* Non-smtlib Builtin *)
         end
 
     (* term decl *)
@@ -817,10 +833,11 @@ module Smtlib2 = struct
       | B.Re_power _ | B.Re_loop _
         -> aux (add_string acc)
 
-      | b ->
+      | _b ->
         (* non-smtlib builtin *)
-        let name = Obj.Extension_constructor.(name (of_val b)) in
-        failwith (Format.asprintf "unknown_builtin : %s" name)
+        (* let name = Obj.Extension_constructor.(name (of_val b)) in
+        failwith (Format.asprintf "unknown_builtin : %s" name) *)
+        all
 
 
     (* Acc <-> logic conversion *)

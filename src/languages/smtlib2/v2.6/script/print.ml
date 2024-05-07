@@ -326,6 +326,7 @@ module Make
     | B.RoundingMode -> N.simple "RoundingMode"
     | B.String -> N.simple "String"
     | B.String_RegLan -> N.simple "RegLan"
+    | B.Seq -> N.simple "Seq"
     | _ -> _cannot_print "unknown type builtin"
 
   let rec ty env fmt t =
@@ -729,6 +730,15 @@ module Make
     | B.Re_option -> simple "re.opt"
     | B.Re_power n -> p Term (N.indexed "re.^" [int n])
     | B.Re_loop (n1, n2) -> p Term (N.indexed "re.loop" [int n1; int n2])
+
+    (* sequences *)
+    | B.Seq_empty -> simple "seq.empty"
+    | B.Seq_unit -> simple "seq.unit"
+    | B.Seq_len -> simple "seq.len"
+    | B.Seq_nth -> simple "seq.nth"
+    | B.Seq_update -> simple "seq.update"
+    | B.Seq_concat -> simple "seq.++"
+    | B.Seq_extract -> simple "seq.extract"
 
     (* fallback *)
     | _ -> _cannot_print "unknown term builtin"

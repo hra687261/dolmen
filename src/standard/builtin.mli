@@ -728,3 +728,16 @@ type _ t +=
         [Re_union ((Re_power(n₁) e) ... (Re_power(n₂) e))]  if n₁ < n₂
   *)
 
+
+(* Sequences *)
+(* ************************************************************************* *)
+type _ t +=
+  | Seq
+  | Seq_empty
+  | Seq_unit
+  | Seq_len
+  | Seq_nth
+  | Seq_update
+  | Seq_concat
+  | Seq_extract
+

@@ -230,3 +230,16 @@ type _ t +=
   | Re_power of int
   | Re_loop of int * int
 
+
+(* Sequences *)
+(* ************************************************************************* *)
+type _ t +=
+  | Seq
+  | Seq_empty
+  | Seq_unit
+  | Seq_len
+  | Seq_nth
+  | Seq_update
+  | Seq_concat
+  | Seq_extract
+
