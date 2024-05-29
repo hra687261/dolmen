@@ -118,8 +118,8 @@ module type Typer = sig
   (** The type of typing environments *)
 
   type input = [
-    | `Logic of Logic.language State.file
-    | `Response of Response.language State.file
+    | `Logic of Logic.language State.input_file
+    | `Response of Response.language State.input_file
   ]
 
   type lang = [

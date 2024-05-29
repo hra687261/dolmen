@@ -89,7 +89,7 @@ module Smtlib2(State : State.S)
 = struct
 
   type loc = {
-    file : Logic.language S.file;
+    file : Logic.language S.input_file;
     loc : Dolmen.Std.Loc.t;
   }
 

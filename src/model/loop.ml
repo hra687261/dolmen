@@ -14,7 +14,7 @@ type term = Dolmen.Std.Expr.Term.t
 type 't located = {
   contents : 't;
   loc : Dolmen.Std.Loc.full;
-  file : Dolmen_loop.Logic.language Dolmen_loop.State.file;
+  file : Dolmen_loop.Logic.language Dolmen_loop.State.input_file;
 }
 
 type acc =
@@ -239,7 +239,7 @@ let unhandled_float_exponand_and_mantissa =
 (* Pipe *)
 (* ************************************************************************ *)
 
-type 'a file = 'a Dolmen_loop.State.file
+type 'a file = 'a Dolmen_loop.State.input_file
 
 module Make
     (State : Dolmen_loop.State.S)
@@ -647,7 +647,7 @@ module Make
     let clause = { file; loc; contents; } in
     check_acc st (Clause clause)
 
-  let check_solve st ~(file : _ Dolmen_loop.State.file) ~loc local_hyps local_goals =
+  let check_solve st ~(file : _ Dolmen_loop.State.input_file) ~loc local_hyps local_goals =
     (* **0** Evaluate local hyps and goals *)
     let st =
       List.fold_left (fun st local_hyp ->

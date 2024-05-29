@@ -11,15 +11,7 @@
 
 type language = Logic.language
 
-type output = [
-  | `Stdout
-  | `File of string
-]
-
-type file = {
-  lang : language option;
-  output : output;
-}
+type file = language State.output_file
 
 let enum = Logic.enum
 
@@ -578,16 +570,20 @@ module Make
         st, mk acc (module Dummy)
     in
     let st, state_value =
-      match output_file with
+      match (output_file : file option) with
       | None -> st, No_export
-      | Some { lang = Some lang; output; } ->
-        mk st lang output
-      | Some { lang = None; output = `Stdout; } ->
+      | Some ({ lang = Some lang; sink; } as f) ->
+        let st = State.set State.export_file f st in
+        mk st lang sink
+      | Some { lang = None; sink = `Stdout; } ->
         (* TODO: proper error *)
         assert false
-      | Some { lang = None; output = (`File filename) as output; } ->
+      | Some { lang = None; sink = (`File filename) as output; } ->
         begin match Logic.of_filename filename with
-          | lang, _, _ -> mk st lang output
+          | lang, _, _ ->
+            let f : file = { lang = Some lang; sink = output; } in
+            let st = State.set State.export_file f st in
+            mk st lang output
           | exception Logic.Extension_not_found _ext ->
             assert false (* TODO: proper error *)
         end

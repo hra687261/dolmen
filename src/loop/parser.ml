@@ -70,7 +70,7 @@ let stdin_prelude =
 (* Pipe functor *)
 (* ************************************************************************ *)
 
-type 'a file = 'a State.file
+type 'a file = 'a State.input_file
 
 module type S = Parser_intf.S
 

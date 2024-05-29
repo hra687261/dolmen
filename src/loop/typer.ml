@@ -1068,7 +1068,7 @@ let typer_state { typer; _ } = typer
 (* Make functor *)
 (* ************************************************************************ *)
 
-type 'a file = 'a State.file
+type 'a file = 'a State.input_file
 
 module type Typer_Full = Typer_intf.Typer_Full
 

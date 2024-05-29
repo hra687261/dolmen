@@ -28,7 +28,8 @@ let () =
     Dolmen_loop.Headers.code, 5;
     Dolmen_model.Loop.code, 6;
     Dolmen_loop.Flow.code, 7;
-    Dolmen_loop.Export.code, 8;
+    Dolmen_loop.Transform.code, 8;
+    Dolmen_loop.Export.code, 9;
   ]
 
 (* Main commands *)
@@ -37,8 +38,8 @@ let () =
 type cmd =
   | Run of {
       state : Loop.State.t;
-      preludes: Dolmen_loop.Logic.language Loop.State.file list;
-      logic_file : Dolmen_loop.Logic.language Loop.State.file;
+      preludes: Dolmen_loop.Logic.language Loop.State.input_file list;
+      logic_file : Dolmen_loop.Logic.language Loop.State.input_file;
     }
   | List_reports of {
       conf : Dolmen_loop.Report.Conf.t;
@@ -371,10 +372,10 @@ let split_input = function
 let mk_output_file lang filename : Dolmen_loop.Export.file option =
   match filename, lang with
   | None, None -> None
-  | None, Some _ -> Some { lang; output = `Stdout; }
-  | Some filename, _ -> Some { lang; output = `File filename; }
+  | None, Some _ -> Some { lang; sink = `Stdout; }
+  | Some filename, _ -> Some { lang; sink = `File filename; }
 
-let mk_input_file lang mode input : _ Dolmen_loop.State.file =
+let mk_input_file lang mode input : _ Dolmen_loop.State.input_file =
   let dir, source = split_input input in
   { lang; mode; dir; source ;
     loc = Dolmen.Std.Loc.mk_file ""; }
@@ -636,8 +637,10 @@ let state =
     Arg.(value & opt bool false & info ["check-flow"] ~doc ~docs:flow_section)
   in
   let compute_logic =
-    let doc = "if true, then the logic for the exported statements will be
-               recomputed" in
+    let doc = "If true, then Dolmen will compute the minimal logic needed to typecheck \
+               all of the statements it has read, and emit a warning if that minimal logic \
+               is smaller than the logic used by the problem. This new logic will also be \
+               used during export to the smtlib2 format." in
     Arg.(value & opt bool false & info ["compute-logic"] ~doc) (* TODO: new doc section *)
   in
   let header_check =
