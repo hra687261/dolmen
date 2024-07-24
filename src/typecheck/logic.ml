@@ -628,6 +628,7 @@ module Smtlib2 = struct
           | [`Int; `Real] ->
             begin match List.map term_arith_view t_args with
               | [`Numeral _] -> add_int_lits acc
+              (* TODO: add reals_ints since to_real was used *)
               | _ -> aux acc
             end
           | _ -> aux acc

@@ -268,9 +268,9 @@ module Make
     | { ns = Value Binary; name = Simple s; } -> bin fmt s
     | { ns = (Attr | Term); name = Simple s; } ->
       if (allow_keyword && Misc.lex_string Lexer.check_keyword s)
-         || Misc.lex_string Lexer.check_simple_symbol s then
+      || Misc.lex_string Lexer.check_simple_symbol s then (
         Format.pp_print_string fmt s
-      else if Misc.lex_string Lexer.check_quoted_symbol s then
+      ) else if Misc.lex_string Lexer.check_quoted_symbol s then
         Format.fprintf fmt "|%s|" s
       else
         _cannot_print "unprintable symbol"
@@ -281,18 +281,19 @@ module Make
 
   let app ?(allow_keyword=false) ~pp env fmt (f, args) =
     match args with
-    | [] -> Format.fprintf fmt "%a" (id ~allow_keyword env) f
+    | [] ->
+      Format.fprintf fmt "%a" (id ~allow_keyword env) f
     | _ :: _ ->
       Format.fprintf fmt "@[<hov 1>(%a@ %a)@]"
         (id ~allow_keyword:false env) f
         (list pp env) args
 
-    let rec app_deep ?allow_keyword ~pp env fmt = function
-      | `Term t -> pp env fmt t
-      | `App_term (f, args) ->
-        app ?allow_keyword ~pp env fmt (f, args)
-      | `App (f, args) ->
-        app ?allow_keyword ~pp:(app_deep ?allow_keyword ~pp) env fmt (f, args)
+  let rec app_deep ?allow_keyword ~pp env fmt = function
+    | `Term t -> pp env fmt t
+    | `App_term (f, args) ->
+      app ?allow_keyword ~pp env fmt (f, args)
+    | `App (f, args) ->
+      app ?allow_keyword ~pp:(app_deep ?allow_keyword ~pp) env fmt (f, args)
 
 
   (* Types *)
@@ -507,7 +508,8 @@ module Make
       begin match find_named env head with
         | None ->
           let poly () = if term_cst_poly env head then Some t_ty else None in
-          p ~poly Term (Env.Term_cst.name env head)
+          let h = Env.Term_cst.name env head in
+          p ~poly Term h
         | Some expr ->
           assert (args = []);
           let f_id = Dolmen_std.Id.create Term (Env.Term_cst.name env head) in

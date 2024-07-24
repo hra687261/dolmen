@@ -210,7 +210,8 @@ and string newline b = parse
 (* these are there to simplify the task of printers, by allowing to
    check strings against some lexical categories *)
 and check_simple_symbol = parse
-  | simple_symbol eof { true }
+  | (simple_symbol as s) eof
+    { match symbol (fun _ -> ()) lexbuf s with SYMBOL _ -> true | _ -> false }
   | _ | eof           { false }
 
 and check_quoted_symbol = parse
