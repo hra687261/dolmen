@@ -285,7 +285,7 @@ module Smtlib2 = struct
     (* Take care of irregular logics *)
     match s, l.features.arrays, l.features.arithmetic with
     (* BV+Arith restrictions / correct cases *)
-    | ("QF_ABV"| "QF_AUFBV"), Only_bitvec, _ -> s
+    | ("QF_ABV"| "QF_AUFBV"), (Only_bitvec | None), _ -> s
     | ("QF_AUFLIRA" | "AUFLIRA"), Only_ints_real, _ -> s
     | ("QF_AUFLIA" | "AUFLIA"), Only_int_int, Linear `Large -> s
     | ("QF_ALIA" | "ALIA"), _, Linear `Large -> s
@@ -295,7 +295,7 @@ module Smtlib2 = struct
     | _, _, (Linear `Large | Difference `UFIDL) ->
       (* TODO: try and find a fallback logic ? *)
       assert false
-    | _, (Only_int_int | Only_ints_real | Only_bitvec), _ ->
+    | _, (All | Only_int_int | Only_ints_real | Only_bitvec), _ ->
       (* TODO: try and find a fallback logic ? *)
       assert false
 
@@ -330,7 +330,7 @@ module Smtlib2 = struct
       bitv_lits   : bool;
       floats      : bool;
       strings     : bool;
-      arrays      : Arrays.Smtlib2.config option;
+      arrays      : Arrays.Smtlib2.config;
       ints        : bool;
       int_lits    : bool;
       reals       : bool;
@@ -407,30 +407,31 @@ module Smtlib2 = struct
     (* array helpers *)
 
     let add_any_array acc =
+      Format.eprintf "ANY !@.";
       match acc.arrays with
-      | Some All -> acc
-      | _ -> { acc with arrays = Some All; }
+      | All -> acc
+      | _ -> { acc with arrays = All; }
 
     let add_int_int_array acc =
       match acc.arrays with
-      | None -> { acc with arrays = Some Only_int_int; }
-      | Some (All | Only_int_int) -> acc
-      | Some (Only_ints_real | Only_bitvec) ->
-        { acc with arrays = Some All; }
+      | None -> { acc with arrays = Only_int_int; }
+      | All | Only_int_int -> acc
+      | Only_ints_real | Only_bitvec ->
+        { acc with arrays = All; }
 
     let add_int_real_array acc =
       match acc.arrays with
-      | None -> { acc with arrays = Some Only_ints_real; }
-      | Some (All | Only_ints_real) -> acc
-      | Some (Only_int_int | Only_bitvec) ->
-        { acc with arrays = Some All; }
+      | None -> { acc with arrays = Only_ints_real; }
+      | All | Only_ints_real -> acc
+      | Only_int_int | Only_bitvec ->
+        { acc with arrays = All; }
 
     let add_bitv_array acc =
       match acc.arrays with
-      | None -> { acc with arrays = Some Only_bitvec; }
-      | Some (All | Only_bitvec) -> acc
-      | Some (Only_int_int | Only_ints_real) ->
-        { acc with arrays = Some All; }
+      | None -> { acc with arrays = Only_bitvec; }
+      | All | Only_bitvec -> acc
+      | Only_int_int | Only_ints_real ->
+        { acc with arrays = All; }
 
     (* Type scanning
        Here, we are interested in the actual concrete types, hence
@@ -854,11 +855,7 @@ module Smtlib2 = struct
               else Linear `Strict
             | Difference `UFIDL -> Difference `UFIDL
           end;
-        arrays =
-          begin match acc.arrays with
-            | None -> All
-            | Some config -> config
-          end;
+        arrays = acc.arrays
       } in
       (* theories *)
       let add b (th : theory) l = if b then th :: l else l in
@@ -867,7 +864,7 @@ module Smtlib2 = struct
         |> add (acc.bitvectors || (acc.bitv_lits && not acc.floats)) `Bitvectors
         |> add acc.floats `Floats
         |> add acc.strings `String
-        |> add (match acc.arrays with None -> false | Some _ -> true) `Arrays
+        |> add (match acc.arrays with None -> false | _ -> true) `Arrays
         |> add ((acc.int_lits || acc.ints) && not acc.reals) `Ints
         |> add (acc.reals && not acc.ints) `Reals
         |> add (acc.ints && acc.reals) `Reals_Ints

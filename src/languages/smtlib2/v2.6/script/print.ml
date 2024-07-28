@@ -95,7 +95,9 @@ let num fmt s =
 let dec fmt s =
   (* smtlib requires at least one digit before or after a `.` *)
   let s =
-    if String.length s >= 2 then
+    if not (String.contains s '.') then
+      s ^ ".0"
+    else if String.length s >= 2 then
       if s.[0] = '.'
       then "0" ^ s
       else if s.[String.length s - 1] = '.'
