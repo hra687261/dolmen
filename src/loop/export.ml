@@ -592,8 +592,12 @@ module Make
         | `Stdout ->
           Format.std_formatter, (fun () -> ())
         | `File filename ->
-          let ch = open_out filename in
-          let close () = close_out ch in
+          let temp_file_name, ch = Filename.open_temp_file ~perms:0o644 "dolmen" ".out" in
+          let close () =
+            close_out ch;
+            (* TODO: this causes crashes... use Fileutils' mv ? *)
+            Unix.rename temp_file_name filename
+          in
           let fmt = Format.formatter_of_out_channel ch in
           fmt, close
       in
