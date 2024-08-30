@@ -202,6 +202,7 @@ module Make
   module E = Dolmen_std.View.Assoc(V)
   module H = Hashtbl.Make(V.Term.Cst)
 
+
   (* Env suff *)
   (* ******** *)
 
@@ -232,6 +233,8 @@ module Make
         | exception Not_found -> None
       end
 
+  (* Env suff *)
+  (* ******** *)
 
   (* Applications of `to_real` that are **directly** under an arithmetic
      operator (such as '+'), can omit to print applications of `to_real`,
@@ -986,6 +989,7 @@ module Make
       Format.fprintf fmt "@[<hov 2>(declare-fun %a@ (%a)@ %a)@]"
         (symbol env) name (list ty env) params (ty env) ret
     | Signature (vars, params, ret) ->
+      let env = List.fold_left Env.Ty_var.bind env vars in
       Format.fprintf fmt "@[<hov 2>(declare-fun %a@ (par@ (%a)@ (%a)@ %a))@]"
         (symbol env) name (list ty_var env) vars
         (list ty env) params (ty env) ret

@@ -525,7 +525,7 @@ let logic_file =
         "Set the input language to $(docv); must be %s."
         (Arg.doc_alts_enum ~quoted:true Dolmen_loop.Logic.enum) in
     Arg.(value & opt (some input_format_conv) None &
-         info ["i"; "input"; "lang"] ~docv:"INPUT" ~doc ~docs)
+         info ["i"; "input"] ~docv:"INPUT" ~doc ~docs)
   in
   let in_mode =
     let doc = Format.asprintf

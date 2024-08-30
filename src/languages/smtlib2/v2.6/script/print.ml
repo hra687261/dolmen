@@ -454,9 +454,9 @@ module Make
     | Match (scrutinee, cases) ->
       term_match env fmt (scrutinee, cases)
     | Binder (Exists { type_vars; term_vars; triggers; }, body) ->
-      quant "exists" env fmt (type_vars, term_vars, triggers, body)
+      exists env fmt type_vars term_vars triggers body
     | Binder (Forall { type_vars; term_vars; triggers; }, body) ->
-      quant "forall" env fmt (type_vars, term_vars, triggers, body)
+      forall env fmt type_vars term_vars triggers body
     | Binder (Letand l, body) ->
       letand env fmt (l, body)
     | Binder (Letin l, body) ->
@@ -779,21 +779,30 @@ module Make
       Format.fprintf fmt "(%a %a)"
         (term_cst env) c (list term_var env) args
 
-  and quant q env fmt (tys, ts, triggers, body) =
+  and exists env fmt tys ts triggers body =
+    match tys with
+    | [] -> quant "exists" env fmt (ts, triggers, body)
+    | _ :: _ -> _cannot_print "existencial type quantification"
+
+  and forall env fmt tys ts triggers body =
+    match tys with
+    | [] -> quant "forall" env fmt (ts, triggers, body)
+    | _ :: _ -> _cannot_print "universal type quantification"
+
+  and quant q env fmt (ts, triggers, body) =
     (* reset some env state *)
     let env = set_omit_to_real env false in
     (* actual printing *)
     (* TODO: patterns/triggers *)
-    match tys, ts, triggers with
-    | _ :: _, _, _ -> _cannot_print "type quantification"
-    | [], [], _ :: _ -> _cannot_print "triggers without quantified variables"
-    | [], [], [] -> term env fmt body
-    | [], _ :: _, [] ->
+    match ts, triggers with
+    | [], _ :: _ -> _cannot_print "triggers without quantified variables"
+    | [], [] -> term env fmt body
+    | _ :: _, [] ->
       let env = List.fold_left Env.Term_var.bind env ts in
       Format.fprintf fmt "@[<hov 1>(%s@ (%a)@ %a)@]" q
         (list sorted_var env) ts
         (term env) body
-    | [], _ :: _, _ :: _ ->
+    | _ :: _, _ :: _ ->
       let env = List.fold_left Env.Term_var.bind env ts in
       Format.fprintf fmt "@[<hv 1>(%s (%a)@ (! %a@ %a))@]" q
         (list sorted_var env) ts
@@ -991,10 +1000,11 @@ module Make
       (ty env) body
 
   let define_fun_aux ~recursive env fmt (f, vars, params, body) =
-    match (vars : V.Ty.Var.t list) with
+    let env = List.fold_left Env.Term_var.bind env params in
+    match (vars : Env.ty_var list) with
     | [] ->
-      let env = List.fold_left Env.Term_var.bind env params in
-      Format.fprintf fmt "@[<hv 2>(@[<hov 1>%s %a@ (%a) %a@]@ @[<hov>%a@])@]"
+      Format.fprintf fmt
+        "@[<hv 2>(@[<hov 1>%s %a@ (%a) %a@]@ @[<hov>%a@])@]"
         (if recursive then "define-fun-rec" else "define-fun")
         (term_cst env) f
         (list sorted_var env) params
@@ -1009,17 +1019,14 @@ module Make
   let define_funs_rec env fmt l =
     let l =
       List.map (fun (f, vars, params, body) ->
-          match vars with
-          | [] ->
-            let env = List.fold_left Env.Term_var.bind env params in
-            (env, f, params, body)
-          | _ :: _ ->
-            _cannot_print "polymorphic function definition"
+          begin match vars with
+            | [] -> () | _ ::_ -> _cannot_print "polymorphic function definition"
+          end;
+          let env = List.fold_left Env.Term_var.bind env params in
+          (env, f, params, body)
         ) l
     in
-    let fun_body _env fmt (env, _, _, body) =
-      term env fmt body
-    in
+    let fun_body _env fmt (env, _, _, body) = term env fmt body in
     let fun_decl _env fmt (env, f, params, body) =
       Format.fprintf fmt "@[<hov 1>(%a@ (%a)@ %a)@]"
         (term_cst env) f
