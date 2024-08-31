@@ -129,7 +129,29 @@ end
 
 let code = Code.create
     ~category:"export"
-    ~descr:"on export errors"
+    ~descr:"on export/printing errors"
+
+let internal_error =
+  Report.Error.mk ~code:Code.bug ~mnemonic:"export-unexpected"
+    ~message:(fun fmt msg ->
+        Format.fprintf fmt "@Internal Error: @[<hov>%a@]" Format.pp_print_text msg)
+    ~name:"Internal Error" ()
+
+let missing_language =
+  Report.Error.mk ~code ~mnemonic:"export-missing-lang"
+    ~message:(fun fmt () ->
+        Format.fprintf fmt "Missing language for export")
+    ~name:"Missing Export Language" ()
+
+let extension_not_found =
+  Report.Error.mk ~code ~mnemonic:"export-unknown-extension"
+    ~message:(fun fmt ext ->
+        Format.fprintf fmt
+          "The following extension is not recognized: '%s'.@ %a"
+          ext Format.pp_print_text
+          "Either provide a recognized extension, or explicitly specify \
+           an output language for export")
+    ~name:"Unknown Export Extension" ()
 
 let unsupported_language =
   Report.Error.mk ~code ~mnemonic:"export-unsupported-lang"
@@ -148,9 +170,11 @@ module type S = sig
 
   include Typer.Types
 
+  type st
+
   type acc
 
-  val print : acc -> typechecked stmt -> acc
+  val print : st -> acc -> typechecked stmt -> st * acc
 
 end
 
@@ -180,6 +204,7 @@ module type Make_smt2_printer = functor
    and type term_cst := Env.term_cst
 
 module Smtlib2
+    (State : State.S)
     (Printer : Make_smt2_printer)
     (Expr : Expr_intf.Export)
     (Sexpr : Dolmen_intf.View.Sexpr.S
@@ -207,6 +232,8 @@ module Smtlib2
   (* modules and init *)
   (* **************** *)
 
+  exception Error of State.t
+
   include Typer_Types
 
   module Env = Env(Expr)(struct
@@ -232,9 +259,9 @@ module Smtlib2
     let env = Env.empty scope in
     { env; fmt; close; }
 
-  let pp_stmt ({ env; fmt; close = _; } as acc) pp x =
+  let pp_stmt st ({ env; fmt; close = _; } as acc) pp x =
     Format.fprintf fmt "%a@." (pp env) x;
-    acc
+    st, acc
 
 
   (* declarations *)
@@ -271,11 +298,11 @@ module Smtlib2
           ) env params
       ) env cases
 
-  let print_simple_decl acc = function
-    | `Type_decl c -> pp_stmt acc P.declare_sort c
-    | `Term_decl c -> pp_stmt acc P.declare_fun c
+  let print_simple_decl (st, acc) = function
+    | `Type_decl c -> pp_stmt st acc P.declare_sort c
+    | `Term_decl c -> pp_stmt st acc P.declare_fun c
 
-  let print_decls acc decls recursive =
+  let print_decls st acc decls recursive =
     let simples, adts = List.partition_map map_decl decls in
     match simples, adts, recursive with
     | [], l, _ ->
@@ -283,7 +310,7 @@ module Smtlib2
       let acc =
         { acc with env = List.fold_left register_adt_decl acc.env l }
       in
-      pp_stmt acc P.declare_datatypes l
+      pp_stmt st acc P.declare_datatypes l
     | l, [], _ ->
       (* declarations for smtlib cannot be recursive:
          - type declarations's bodies are just integers
@@ -295,30 +322,36 @@ module Smtlib2
       let acc =
         { acc with env = List.fold_left register_simple_decl acc.env l; }
       in
-      List.fold_left print_simple_decl acc l
+      List.fold_left print_simple_decl (st, acc) l
     | _ ->
-      assert false (* TODO: better error / can this happen ? *)
+      (* Can this happen ? *)
+      let st = State.error st internal_error "Unsupported mix of declarations" in
+      st, acc
 
   (* definitions *)
   (* *********** *)
 
-  let map_def = function
+  let map_def st = function
     | `Type_alias (_, c, vars, body) -> Either.Left (c, vars, body)
     | `Term_def (_, c, vars, params, body) -> Either.Right (c, vars, params, body)
-    | `Instanceof _ -> assert false (* TODO: proper error, cannot print *)
+    | `Instanceof _ ->
+      let st =
+        State.error st internal_error
+          "Cannot print model redefinition of corner cases"
+      in
+      raise (Error st)
 
   let assert_not_named c =
     match Expr.Term.Const.get_tag c Expr.Tags.named with
     | Some _ -> assert false (* TODO: better error *)
     | None -> ()
 
-  let print_defs acc defs recursive =
-    let typedefs, fundefs = List.partition_map map_def defs in
-    match typedefs, fundefs, recursive with
-
-    | [], [], _ -> assert false (* internal invariant: should not happen *)
-    | _ :: _, _ :: _, _ -> assert false (* can this happen ? *)
-    | _ :: _, [], true -> assert false (* TODO: proper error / cannot print *)
+  let print_defs st acc defs recursive =
+    match List.partition_map (map_def st) defs, recursive with
+    | exception Error st -> st, acc
+    | ([], []), _ -> assert false (* internal invariant: should not happen *)
+    | (_ :: _, _ :: _), _ -> assert false (* can this happen ? *)
+    | (_ :: _, []), true -> assert false (* TODO: proper error / cannot print *)
 
     (* Note: we might want to have the body of a definition printed with
        an env that does not contain said definition, if only for shadowing
@@ -326,32 +359,32 @@ module Smtlib2
        of constants is not allowed. *)
 
     (* Type Defs *)
-    | l, [], false ->
-      List.fold_left (fun acc ((c, _, _) as def) ->
+    | (l, []), false ->
+      List.fold_left (fun (st, acc) ((c, _, _) as def) ->
           let acc = { acc with env = Env.Ty_cst.bind acc.env c; } in
-          pp_stmt acc P.define_sort def
-        ) acc l
+          pp_stmt st acc P.define_sort def
+        ) (st, acc) l
 
     (* Term Defs (regular) *)
-    | [], l, false ->
-      List.fold_left (fun acc ((c, vars, params, body) as def) ->
+    | ([], l), false ->
+      List.fold_left (fun (st, acc) ((c, vars, params, body) as def) ->
           let env = Env.Term_cst.bind acc.env c in
           match Expr.Term.Const.get_tag c Expr.Tags.named with
           | None ->
             let acc = { acc with env = Env.Term_cst.bind acc.env c; } in
-            pp_stmt acc P.define_fun def
+            pp_stmt st acc P.define_fun def
           | Some _ ->
             assert (vars = [] && params = []);
             let env = P.add_named env c body in
-            { acc with env }
-        ) acc l
+            st, { acc with env }
+        ) (st, acc) l
 
     (* Term Defs (recursive) *)
-    | [], [(c, _, _, _) as def], true ->
+    | ([], [(c, _, _, _) as def]), true ->
       let acc = { acc with env = Env.Term_cst.bind acc.env c; } in
       assert_not_named c;
-      pp_stmt acc P.define_fun_rec def
-    | [], l, true ->
+      pp_stmt st acc P.define_fun_rec def
+    | ([], l), true ->
       let acc = {
         acc with
         env =
@@ -360,7 +393,7 @@ module Smtlib2
               Env.Term_cst.bind env c
             ) acc.env l}
       in
-      pp_stmt acc P.define_funs_rec l
+      pp_stmt st acc P.define_funs_rec l
 
 
   (* solve/check-sat *)
@@ -373,79 +406,88 @@ module Smtlib2
           | _ -> false) -> false
       | _ -> true
 
-    let print_solve_aux acc ~hyps =
-      let acc, local_hyps_rev =
-        List.fold_left (fun (acc, local_hyps) hyp ->
+    let print_solve_aux st acc ~hyps =
+      let st, acc, local_hyps_rev =
+        List.fold_left (fun (st, acc, local_hyps) hyp ->
             match P.match_prop_literal hyp with
-            | `Cst _ | `Neg _ -> acc, hyp :: local_hyps
+            | `Cst _ | `Neg _ -> st, acc, hyp :: local_hyps
             | `Not_a_prop_literal ->
               let prop = View.Term.ty hyp in
               let path = Dolmen_std.Path.global "local_hyp" in
               let c = Expr.Term.Const.mk path prop in
-              let acc = pp_stmt acc P.define_fun (c, [], [], hyp) in
-              acc, (Expr.Term.of_cst c :: local_hyps)
-          ) (acc, []) hyps
+              let st, acc = pp_stmt st acc P.define_fun (c, [], [], hyp) in
+              st, acc, (Expr.Term.of_cst c :: local_hyps)
+          ) (st, acc, []) hyps
       in
-      pp_stmt acc P.check_sat_assuming (List.rev local_hyps_rev)
+      pp_stmt st acc P.check_sat_assuming (List.rev local_hyps_rev)
 
-    let print_solve acc ~hyps ~goals =
+    let print_solve st acc ~hyps ~goals =
       let goals = List.filter is_not_trivially_false goals in
       match goals with
-      | [] -> print_solve_aux acc ~hyps
+      | [] -> print_solve_aux st acc ~hyps
       | _ :: _ ->
-        let acc = pp_stmt acc P.push 1 in
-        let acc = List.fold_left (fun acc goal ->
-            pp_stmt acc P.assert_ (Expr.Term.neg goal)
-          ) acc goals
+        let st, acc = pp_stmt st acc P.push 1 in
+        let st, acc = List.fold_left (fun (st, acc) goal ->
+            pp_stmt st acc P.assert_ (Expr.Term.neg goal)
+          ) (st, acc) goals
         in
-        let acc = print_solve_aux acc ~hyps in
-        let acc = pp_stmt acc P.pop 1 in
-        acc
+        let st, acc = print_solve_aux st acc ~hyps in
+        let st, acc = pp_stmt st acc P.pop 1 in
+        st, acc
 
 
   (* statement printing *)
   (* ****************** *)
 
-  let print acc (stmt : Typer_Types.typechecked Typer_Types.stmt) =
+  let print st acc (stmt : Typer_Types.typechecked Typer_Types.stmt) =
     match stmt.contents with
       (* info setters *)
       | `Set_logic (s, _) ->
         begin match Dolmen_type.Logic.Smtlib2.parse s with
-          | Some _ -> pp_stmt acc P.set_logic s
-          | None -> assert false (* TODO: proper error *)
+          | Some _ ->
+            pp_stmt st acc P.set_logic s
+          | None ->
+            let st = State.error st internal_error "Unparseable logic" in
+            st, acc
         end
-      | `Set_info s -> pp_stmt acc P.set_info s
-      | `Set_option s -> pp_stmt acc P.set_option s
+      | `Set_info s -> pp_stmt st acc P.set_info s
+      | `Set_option s -> pp_stmt st acc P.set_option s
       (* Info getters *)
-      | `Get_info s -> pp_stmt acc P.get_info s
-      | `Get_option s -> pp_stmt acc P.get_option s
-      | `Get_proof -> pp_stmt acc P.get_proof ()
-      | `Get_unsat_core -> pp_stmt acc P.get_unsat_core ()
-      | `Get_unsat_assumptions -> pp_stmt acc P.get_unsat_assumptions ()
-      | `Get_model -> pp_stmt acc P.get_model ()
-      | `Get_value l -> pp_stmt acc P.get_value l
-      | `Get_assignment -> pp_stmt acc P.get_assignment ()
-      | `Get_assertions -> pp_stmt acc P.get_assertions ()
-      | `Echo s -> pp_stmt acc P.echo s
+      | `Get_info s -> pp_stmt st acc P.get_info s
+      | `Get_option s -> pp_stmt st acc P.get_option s
+      | `Get_proof -> pp_stmt st acc P.get_proof ()
+      | `Get_unsat_core -> pp_stmt st acc P.get_unsat_core ()
+      | `Get_unsat_assumptions -> pp_stmt st acc P.get_unsat_assumptions ()
+      | `Get_model -> pp_stmt st acc P.get_model ()
+      | `Get_value l -> pp_stmt st acc P.get_value l
+      | `Get_assignment -> pp_stmt st acc P.get_assignment ()
+      | `Get_assertions -> pp_stmt st acc P.get_assertions ()
+      | `Echo s -> pp_stmt st acc P.echo s
       (* Stack management *)
-      | `Pop n -> pp_stmt acc P.pop n
-      | `Push n -> pp_stmt acc P.push n
-      | `Reset -> pp_stmt acc P.reset ()
-      | `Reset_assertions -> pp_stmt acc P.reset_assertions ()
+      | `Pop n -> pp_stmt st acc P.pop n
+      | `Push n -> pp_stmt st acc P.push n
+      | `Reset -> pp_stmt st acc P.reset ()
+      | `Reset_assertions -> pp_stmt st acc P.reset_assertions ()
       (* Decls & defs *)
-      | `Decls (recursive, decls) -> print_decls acc decls recursive
-      | `Defs (recursive, defs) -> print_defs acc defs recursive
+      | `Decls (recursive, decls) -> print_decls st acc decls recursive
+      | `Defs (recursive, defs) -> print_defs st acc defs recursive
       (* Assume *)
-      | `Hyp t -> pp_stmt acc P.assert_ t
-      | `Goal g -> pp_stmt acc P.assert_ (Expr.Term.neg g)
-      | `Clause l ->  pp_stmt acc P.assert_ (Expr.Term._or l)
+      | `Hyp t -> pp_stmt st acc P.assert_ t
+      | `Goal g -> pp_stmt st acc P.assert_ (Expr.Term.neg g)
+      | `Clause l ->  pp_stmt st acc P.assert_ (Expr.Term._or l)
       (* Solve *)
-      | `Solve (hyps, goals) -> print_solve acc ~hyps ~goals
+      | `Solve (hyps, goals) -> print_solve st acc ~hyps ~goals
       (* Exit *)
-      | `Exit -> pp_stmt acc P.exit ()
-      | `End -> acc.close (); acc
+      | `Exit -> pp_stmt st acc P.exit ()
+      | `End -> acc.close (); st, acc
       (* Other *)
-      | `Other _ -> assert false (* TODO: proper error / or allow extensions ? *)
+      | `Other _ ->
+        (* TODO: allow extensions/plugin *)
+        let st =
+          State.error st internal_error
+            "Unsupported statement (coming from an extension)"
+        in
+        st, acc
 
 end
 
@@ -472,11 +514,9 @@ module Dummy
 
   let init fmt = fmt
 
-  let print fmt _ =
+  let print _ fmt _ =
     Format.fprintf fmt "statement@.";
-    fmt
-
-  let finalise _fmt = ()
+    st, fmt
 
 end
 
@@ -510,7 +550,8 @@ module Make
 
   (* Type definitions *)
   module type S' = S
-    with type ty := Expr.ty
+    with type st := State.t
+     and type ty := Expr.ty
      and type ty_var := Expr.ty_var
      and type ty_cst := Expr.ty_cst
      and type ty_def := Expr.ty_def
@@ -531,8 +572,8 @@ module Make
   (* available printers *)
 
   module Dummy = Dummy(Expr)(Typer_Types)
-  module Smtlib2_6 = Smtlib2(Dolmen.Smtlib2.Script.V2_6.Print.Make)(Expr)(Sexpr)(View)(Typer_Types)
-  module Smtlib2_Poly = Smtlib2(Dolmen.Smtlib2.Script.Poly.Print.Make)(Expr)(Sexpr)(View)(Typer_Types)
+  module Smtlib2_6 = Smtlib2(State)(Dolmen.Smtlib2.Script.V2_6.Print.Make)(Expr)(Sexpr)(View)(Typer_Types)
+  module Smtlib2_Poly = Smtlib2(State)(Dolmen.Smtlib2.Script.Poly.Print.Make)(Expr)(Sexpr)(View)(Typer_Types)
 
   (* setup *)
 
@@ -576,16 +617,17 @@ module Make
         let st = State.set State.export_file f st in
         mk st lang sink
       | Some { lang = None; sink = `Stdout; } ->
-        (* TODO: proper error *)
-        assert false
+        let st = State.error st missing_language () in
+        st, No_export
       | Some { lang = None; sink = (`File filename) as output; } ->
         begin match Logic.of_filename filename with
           | lang, _, _ ->
             let f : file = { lang = Some lang; sink = output; } in
             let st = State.set State.export_file f st in
             mk st lang output
-          | exception Logic.Extension_not_found _ext ->
-            assert false (* TODO: proper error *)
+          | exception Logic.Extension_not_found ext ->
+            let st = State.error st extension_not_found ext in
+            st, No_export
         end
     in
     st
@@ -598,8 +640,13 @@ module Make
     | No_export -> st, l
     | Export { acc; printer; } ->
       let (module P) = printer in
-      let acc = List.fold_left P.print acc l in
-      let st = State.set state (Export { acc; printer; }) st in
+      let st, _ =
+        List.fold_left (fun (st, acc) stmt ->
+            let acc = P.print st acc stmt in
+            let st = State.set state (Export { acc; printer; }) st in
+            st, acc
+          ) (st, acc) l
+      in
       st, l
 
 end
