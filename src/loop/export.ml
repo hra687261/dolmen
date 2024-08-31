@@ -514,7 +514,7 @@ module Dummy
 
   let init fmt = fmt
 
-  let print _ fmt _ =
+  let print st fmt _ =
     Format.fprintf fmt "statement@.";
     st, fmt
 
@@ -642,7 +642,7 @@ module Make
       let (module P) = printer in
       let st, _ =
         List.fold_left (fun (st, acc) stmt ->
-            let acc = P.print st acc stmt in
+            let st, acc = P.print st acc stmt in
             let st = State.set state (Export { acc; printer; }) st in
             st, acc
           ) (st, acc) l
