@@ -1,1 +1,3 @@
-run 'make promote' to update this file
+(set-logic QF_UF)
+(declare-fun match_bool (par (|'a|) (Bool |'a| |'a|) |'a|))
+(exit)
