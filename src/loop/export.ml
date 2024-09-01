@@ -592,10 +592,27 @@ module Make
         | `Stdout ->
           Format.std_formatter, (fun () -> ())
         | `File filename ->
-          let temp_file_name, ch = Filename.open_temp_file ~perms:0o644 "dolmen" ".out" in
+          (* Use a tmpfile because it helps a lot. That way, we are guaranteed
+             the tmpfile is distinct form any pre-existing file, and we can rename
+             it at the end. This brings a notion of atomicity of the effective
+             printing, and more importantly allow the destination of the printing
+             to be the same file as the input file. *)
+          let dst_dir = Filename.dirname filename in
+          let closed = ref false in
+          let temp_file_name, ch =
+            Filename.open_temp_file "dolmen" ".out"
+              ~temp_dir:dst_dir ~perms:0o644
+          in
+          (* slight hack to ensure that the tmpfile is deleted if
+             there is an error before the printing is finished. *)
+          at_exit (fun () ->
+              if not !closed then begin
+                close_out ch;
+                Unix.unlink temp_file_name
+              end);
           let close () =
+            closed := true;
             close_out ch;
-            (* TODO: this causes crashes... use Fileutils' mv ? *)
             Unix.rename temp_file_name filename
           in
           let fmt = Format.formatter_of_out_channel ch in
