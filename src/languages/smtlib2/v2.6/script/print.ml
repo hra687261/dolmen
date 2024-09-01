@@ -10,6 +10,8 @@
 module Misc = Dolmen_std.Misc
 
 exception Cannot_print of string
+exception Polymorphic_function_definition
+exception Polymorphic_function_declaration
 
 (* TODO: structured errors *)
 let _cannot_print format =
@@ -990,7 +992,7 @@ module Make
       Format.fprintf fmt "@[<hov 2>(declare-fun %a@ (%a)@ %a)@]"
         (symbol env) name (list ty env) params (ty env) ret
     | Signature (_ :: _, _, _) ->
-      _cannot_print "polymorphic function declaration"
+      raise Polymorphic_function_declaration
 
   let define_sort env fmt (c, params, body) =
     let env = List.fold_left Env.Ty_var.bind env params in
@@ -1011,7 +1013,7 @@ module Make
         (ty env) (V.Term.ty body)
         (term env) body
     | _ :: _ ->
-      _cannot_print "polymorphic function definition"
+      raise Polymorphic_function_definition
 
   let define_fun = define_fun_aux ~recursive:false
   let define_fun_rec = define_fun_aux ~recursive:true
@@ -1020,7 +1022,7 @@ module Make
     let l =
       List.map (fun (f, vars, params, body) ->
           begin match vars with
-            | [] -> () | _ ::_ -> _cannot_print "polymorphic function definition"
+            | [] -> () | _ ::_ -> raise Polymorphic_function_definition
           end;
           let env = List.fold_left Env.Term_var.bind env params in
           (env, f, params, body)

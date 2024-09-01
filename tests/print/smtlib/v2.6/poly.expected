@@ -1,13 +1,3 @@
 (set-logic QF_UF)
-Error Uncaught exception:
-      Dolmen_smtlib2_v6_script__Print.Cannot_print("polymorphic function declaration")
-Raised at Dolmen_smtlib2_v6_script__Print._cannot_print.(fun) in file "src/languages/smtlib2/v2.6/script/print.ml", line 16, characters 31-55
-Called from Stdlib__Format.output_acc in file "format.ml", line 1355, characters 4-20
-Called from Stdlib__Format.kfprintf.(fun) in file "format.ml", line 1416, characters 16-34
-Called from Dolmen_loop__Export.Smtlib2.pp_stmt in file "src/loop/export.ml", line 263, characters 4-40
-Called from Stdlib__List.fold_left in file "list.ml", line 123, characters 24-34
-Called from Dolmen_loop__Export.Make.export.(fun) in file "src/loop/export.ml", line 645, characters 26-45
-Called from Stdlib__List.fold_left in file "list.ml", line 123, characters 24-34
-Called from Dolmen_loop__Export.Make.export in file "src/loop/export.ml", line 644, characters 8-208
-Called from Dolmen_loop__Pipeline.Make.eval_op in file "src/loop/pipeline.ml", line 87, characters 8-17
-
+Error Cannot print: SSMT-LIB2 version 2.6 and earlier do not allow
+      polymorphic function declarations or definitions.

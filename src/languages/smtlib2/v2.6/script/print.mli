@@ -9,6 +9,11 @@ exception Cannot_print of string
     conventions. In that case, the string contains a message explaining
     why the printing failed. *)
 
+exception Polymorphic_function_definition
+exception Polymorphic_function_declaration
+(** Exceptions raised when trying to print a polymorphic function
+    declaration or definition. *)
+
 val symbol : Format.formatter -> Dolmen_std.Name.t -> unit
 (** Print an identifier, quoting it if necessary. *)
 

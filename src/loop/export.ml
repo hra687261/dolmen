@@ -162,6 +162,15 @@ let unsupported_language =
       )
     ~name:"Unsupported Export Language" ()
 
+let polymorphic_function_in_smt2 =
+  Report.Error.mk ~code ~mnemonic:"export-smt2-poly"
+    ~message:(fun fmt () -> (* TODO: find the location ? *)
+        Format.fprintf fmt "%a" Format.pp_print_text
+          "Cannot print: SSMT-LIB2 version 2.6 and earlier do not allow polymorphic \
+           function declarations or definitions.")
+    ~name:"Polymorphic function in SMT-LIB2" ()
+
+
 
 (* Printer interface *)
 (* ************************************************************************ *)
@@ -260,8 +269,19 @@ module Smtlib2
     { env; fmt; close; }
 
   let pp_stmt st ({ env; fmt; close = _; } as acc) pp x =
-    Format.fprintf fmt "%a@." (pp env) x;
-    st, acc
+    try
+      Format.fprintf fmt "%a@." (pp env) x;
+      st, acc
+    with
+    | Dolmen.Smtlib2.Script.V2_6.Print.Cannot_print msg
+    | Dolmen.Smtlib2.Script.Poly.Print.Cannot_print msg ->
+      let message = Format.asprintf "Could not print: %s" msg in
+      let st = State.error st internal_error message in
+      st, acc
+    | Dolmen.Smtlib2.Script.V2_6.Print.Polymorphic_function_definition
+    | Dolmen.Smtlib2.Script.V2_6.Print.Polymorphic_function_declaration ->
+      let st = State.error st polymorphic_function_in_smt2 () in
+      st, acc
 
 
   (* declarations *)
