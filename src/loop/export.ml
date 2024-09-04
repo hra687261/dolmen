@@ -166,7 +166,7 @@ let polymorphic_function_in_smt2 =
   Report.Error.mk ~code ~mnemonic:"export-smt2-poly"
     ~message:(fun fmt () -> (* TODO: find the location ? *)
         Format.fprintf fmt "%a" Format.pp_print_text
-          "Cannot print: SSMT-LIB2 version 2.6 and earlier do not allow polymorphic \
+          "Cannot print: SMT-LIB2 version 2.6 and earlier do not allow polymorphic \
            function declarations or definitions.")
     ~name:"Polymorphic function in SMT-LIB2" ()
 
