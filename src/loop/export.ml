@@ -238,6 +238,19 @@ module Smtlib2
       and type formula = Expr.term)
 = struct
 
+  (* printing misc    *)
+  (* **************** *)
+
+  let split_dec s =
+    match Q.of_string s with
+    | exception Invalid_argument _ -> None
+    | q ->
+      let num = Q.num q in
+      let den = Q.den q in
+      let sign = if Z.lt num Z.zero then `Neg else `Pos in
+      Some (sign, Z.to_string (Z.abs num), Z.to_string den)
+
+
   (* modules and init *)
   (* **************** *)
 
@@ -266,6 +279,7 @@ module Smtlib2
     let on_conflict ~prev_id:_ ~new_id:_ ~name:_ = Env.Scope.Rename in
     let scope = Env.Scope.empty ~rename ~sanitize ~on_conflict in
     let env = Env.empty scope in
+    let env = P.set_split_dec env split_dec in
     { env; fmt; close; }
 
   let pp_stmt st ({ env; fmt; close = _; } as acc) pp x =

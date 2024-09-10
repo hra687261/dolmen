@@ -21,10 +21,9 @@ module type Smtlib2 = sig
   val add_named : env -> term_cst -> term -> env
   (** Add a `:named` definition to the env. *)
 
-  (*
-  val set_normalize_dec : env -> (string -> string) -> env
-  (** Set a normalization function for decimals. *)
-  *)
+  val set_split_dec : env -> (string -> ([ `Pos | `Neg ] * string * string) option) -> env
+  (** Set a splitting function for decimals. *)
+
 
   (** {2 Helpers} *)
 

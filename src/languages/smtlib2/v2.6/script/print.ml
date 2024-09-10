@@ -94,7 +94,7 @@ let num fmt s =
   else
     _cannot_print "num"
 
-let dec fmt s =
+let dec ~k fmt s =
   (* smtlib requires at least one digit before or after a `.` *)
   let s =
     if not (String.contains s '.') then
@@ -111,7 +111,7 @@ let dec fmt s =
   if Misc.lex_string Lexer.check_dec s then
     Format.pp_print_string fmt s
   else
-    _cannot_print "dec"
+    k ~k:(fun () -> _cannot_print "dec") ()
 
 let hex fmt s =
   if Misc.lex_string Lexer.check_hex s then
@@ -209,13 +209,12 @@ module Make
 
   (* Env suff *)
   (* ******** *)
-(*
-  (* normalization of decimals *)
-  let normalize_dec : (string -> string) Env.key = Env.key ()
 
-  let set_normalize_dec env f =
-    Env.set env normalize_dec f
-*)
+  (* splitting of decimals *)
+  let split_dec : (string -> ([ `Pos | `Neg ] * string * string) option) Env.key = Env.key ()
+
+  let set_split_dec env f = Env.set env split_dec f
+
   (* ":named" stuff *)
   let named_csts_key : V.Term.t H.t Env.key = Env.key ()
 
@@ -273,7 +272,18 @@ module Make
     match (id : Dolmen_std.Id.t) with
     | { ns = Value String; name = Simple s; } -> string fmt s
     | { ns = Value Integer; name = Simple s; } -> num fmt s
-    | { ns = Value Real; name = Simple s; } -> dec fmt s
+    | { ns = Value Real; name = Simple s; } ->
+      dec fmt s ~k:(fun ~k () ->
+          match Env.get env split_dec with
+          | None -> k ()
+          | Some f ->
+            begin match f s with
+              | None -> k ()
+              | Some (`Pos, numerator, denominator) ->
+                Format.fprintf fmt "(/ %a %a)" num numerator num denominator
+              | Some (`Neg, numerator, denominator) ->
+                Format.fprintf fmt "(/ (- %a) %a)" num numerator num denominator
+            end)
     | { ns = Value Hexadecimal; name = Simple s; } -> hex fmt s
     | { ns = Value Binary; name = Simple s; } -> bin fmt s
     | { ns = (Attr | Term); name = Simple s; } ->
@@ -337,7 +347,9 @@ module Make
     | B.RoundingMode -> N.simple "RoundingMode"
     | B.String -> N.simple "String"
     | B.String_RegLan -> N.simple "RegLan"
-    | _ -> _cannot_print "unknown type builtin"
+    | _ ->
+      (* Fallback: some builtins may be explicitly defined (e.g. unit) *)
+      Env.Ty_cst.name env c
 
   let rec ty env fmt t =
     (* Here, since we want to print things, we do not expand types,
