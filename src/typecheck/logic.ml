@@ -314,6 +314,9 @@ module Smtlib2 = struct
 
     (* Accumulator and helpers *)
 
+    exception Unknown_ty_builtin of V.ty_cst
+    exception Unknown_term_builtin of V.term_cst
+
     type arith_config =
       | Non_linear
       | No_constraint
@@ -322,6 +325,7 @@ module Smtlib2 = struct
 
     type acc = {
       need_univ       : bool;
+      need_unit       : bool;
       free_sorts      : bool;
       free_functions  : bool;
       quantifiers : bool;
@@ -341,6 +345,8 @@ module Smtlib2 = struct
 
     let add_univ acc =
       if acc.need_univ then acc else { acc with need_univ = true; }
+    let add_unit acc =
+      if acc.need_unit then acc else { acc with need_unit = true; }
     let add_free_sort acc =
       if acc.free_sorts then acc else { acc with free_sorts = true; }
     let add_free_funs acc =
@@ -461,6 +467,7 @@ module Smtlib2 = struct
         begin match V.Ty.Cst.builtin f with
           | B.Base -> aux (add_free_sort acc)
           | B.Univ -> aux (add_univ acc)
+          | B.Unit -> aux (add_unit acc)
           | B.Prop -> aux acc
           | B.Int -> aux (add_arith `Int acc)
           | B.Real -> aux (add_arith `Real acc)
@@ -479,7 +486,8 @@ module Smtlib2 = struct
                 end
               | _ -> assert false (* incorrect use of builtin B.Array *)
             end
-          | _ -> assert false (* Non-smtlib Builtin *)
+          | _ ->
+            raise (Unknown_ty_builtin f)
         end
 
     (* term decl *)
@@ -872,9 +880,11 @@ module Smtlib2 = struct
       { theories; features; }
 
     let need_univ acc = acc.need_univ
+    let need_unit acc = acc.need_unit
 
     let nothing = {
       need_univ = false;
+      need_unit = false;
       free_sorts = false;
       free_functions = false;
       quantifiers = false;

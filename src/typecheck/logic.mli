@@ -56,6 +56,10 @@ module Smtlib2 : sig
       scanning/inspecting types and terms *)
   module Scan(V : Dolmen_intf.View.TFF.S) : sig
 
+    exception Unknown_ty_builtin of V.ty_cst
+    exception Unknown_term_builtin of V.term_cst
+    (** Exception raised on builtins not allowed in SMT-LIB. *)
+
     type acc
     (** accumulator for computing minimal logics *)
 
@@ -64,6 +68,9 @@ module Smtlib2 : sig
 
     val need_univ : acc -> bool
     (** Whether the univ type is used. *)
+
+    val need_unit : acc -> bool
+    (** Whether the unit type is used. *)
 
     val to_logic : acc -> t
     (** Tansform an accumulator into a logic *)

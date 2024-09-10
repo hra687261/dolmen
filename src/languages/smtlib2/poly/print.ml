@@ -92,7 +92,7 @@ let num fmt s =
   else
     _cannot_print "num"
 
-let dec fmt s =
+let dec ~k fmt s =
   (* smtlib requires at least one digit before or after a `.` *)
   let s =
     if String.length s >= 2 then
@@ -107,7 +107,7 @@ let dec fmt s =
   if Misc.lex_string Lexer.check_dec s then
     Format.pp_print_string fmt s
   else
-    _cannot_print "dec"
+    k ~k:(fun () -> _cannot_print "dec") ()
 
 let hex fmt s =
   if Misc.lex_string Lexer.check_hex s then
@@ -205,7 +205,12 @@ module Make
 
   (* Env suff *)
   (* ******** *)
+(*
+  (* normalization of decimals *)
+  let split_dec : (string -> string * string) Env.key = Env.key ()
 
+  let set_split_dec env f = Env.set env split_dec f
+*)
   (* ":named" stuff *)
   let named_csts_key : V.Term.t H.t Env.key = Env.key ()
 
@@ -263,7 +268,7 @@ module Make
     match (id : Dolmen_std.Id.t) with
     | { ns = Value String; name = Simple s; } -> string fmt s
     | { ns = Value Integer; name = Simple s; } -> num fmt s
-    | { ns = Value Real; name = Simple s; } -> dec fmt s
+    | { ns = Value Real; name = Simple s; } -> dec fmt s ~k:(fun ~k () -> k ())
     | { ns = Value Hexadecimal; name = Simple s; } -> hex fmt s
     | { ns = Value Binary; name = Simple s; } -> bin fmt s
     | { ns = (Attr | Term); name = Simple s; } ->

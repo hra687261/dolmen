@@ -209,7 +209,13 @@ module Make
 
   (* Env suff *)
   (* ******** *)
+(*
+  (* normalization of decimals *)
+  let normalize_dec : (string -> string) Env.key = Env.key ()
 
+  let set_normalize_dec env f =
+    Env.set env normalize_dec f
+*)
   (* ":named" stuff *)
   let named_csts_key : V.Term.t H.t Env.key = Env.key ()
 

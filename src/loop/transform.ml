@@ -33,6 +33,20 @@ let non_minimal_logic =
       )
     ~name:"Non Minimal Logic" ()
 
+let non_handled_builtin =
+  Report.Error.mk ~code ~mnemonic:"transform-unhandled-builtin"
+    ~message:(fun fmt (lang, f) ->
+        let aux pp arg =
+          Format.fprintf fmt "%a %s:@ %a"
+            Format.pp_print_text
+            "The following symbol cannot be exported in"
+            lang pp arg
+        in
+        match f with
+        | `Ty c -> aux Dolmen_std.Expr.Ty.Const.print c
+        | `Term c -> aux Dolmen_std.Expr.Term.Const.print c)
+    ~name:"Unhandled Builtin" ()
+
 
 (* Common interface for transformation *)
 (* ************************************************************************ *)
@@ -111,12 +125,32 @@ module Smtlib2
       let set_logic : Typer_Types.typechecked Typer_Types.stmt = {
         id = Dolmen.Std.Id.create Attr (Dolmen.Std.Name.simple "set_logic");
         loc = Dolmen.Std.Loc.no_loc;
-        contents = `Set_logic (logic_name, Smtlib2 logic);
         attrs = [];
         implicit = false;
+        contents = `Set_logic (logic_name, Smtlib2 logic);
       } in
-      let univ =
-        if not (S.need_univ scan_acc) then []
+      (* Accumulate top-level declaration *)
+      let acc = [] in
+      (* Unit type *)
+      let acc =
+        if not (S.need_unit scan_acc) then acc
+        else begin
+          let cst = Dolmen.Std.Expr.Ty.Const.unit in
+          let declare_unit : Typer_Types.typechecked Typer_Types.stmt = {
+            id = Dolmen.Std.Id.create Attr (Dolmen.Std.Name.simple "declare_unit");
+            loc = Dolmen.Std.Loc.no_loc;
+            attrs = [];
+            implicit = false;
+            contents = `Decls (false, [`Type_decl (cst,
+                Dolmen.Std.Expr.Ty.definition cst
+              )]);
+          } in
+          declare_unit :: acc
+        end
+      in
+      (* Univ/tptp's $i type *)
+      let acc =
+        if not (S.need_univ scan_acc) then acc
         else begin
           let declare_univ : Typer_Types.typechecked Typer_Types.stmt = {
             id = Dolmen.Std.Id.create Attr (Dolmen.Std.Name.simple "declare_univ");
@@ -125,10 +159,10 @@ module Smtlib2
             attrs = [];
             implicit = false;
           } in
-          [ declare_univ ]
+          declare_univ :: acc
         end
       in
-      st, set_logic :: univ
+      st, set_logic :: acc
 
   let flush st acc res =
     let st, logic_stmts = compute_logic st acc in
@@ -159,7 +193,7 @@ module Smtlib2
     | Not_seen_yet -> add_pre_logic_stmt acc stmt
     | Logic _ -> add_post_logic_stmt acc stmt
 
-  let accumulate_logic (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
+  let accumulate_logic_aux (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
     match stmt.contents with
     (* Just record the old logic, if any *)
     | `Set_logic (s, _) ->
@@ -264,6 +298,16 @@ module Smtlib2
         let acc = add_stmt acc stmt in
         flush st acc res
       end
+
+  let accumulate_logic ((st, acc, res) as arg) stmt =
+    try accumulate_logic_aux arg stmt
+    with
+    | S.Unknown_ty_builtin f ->
+      let st = State.error st non_handled_builtin ("SMT-LIB", `Ty f) in
+      (st, acc, res)
+    | S.Unknown_term_builtin f ->
+      let st = State.error st non_handled_builtin ("SMT-LIB", `Term f) in
+      (st, acc, res)
 
   let transform st acc (l : Typer_Types.typechecked Typer_Types.stmt list) =
     List.fold_left accumulate_logic (st, acc, []) l
