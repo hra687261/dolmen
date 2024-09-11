@@ -520,18 +520,7 @@ module Make
     (* Matching *)
     match V.Term.Cst.builtin head with
 
-    (* Base + Algebraic datatypes *)
-    | B.Base ->
-      begin match find_named env head with
-        | None ->
-          let poly () = if term_cst_poly env head then Some t_ty else None in
-          p ~poly Term (Env.Term_cst.name env head)
-        | Some expr ->
-          assert (args = []);
-          let f_id = Dolmen_std.Id.create Term (Env.Term_cst.name env head) in
-          Format.fprintf fmt "(! %a@ :named %a)"
-            (term env) expr (id ~allow_keyword:false env) f_id
-      end
+    (* Algebraic datatypes *)
     | B.Constructor _ | B.Destructor _ ->
       let poly () = if term_cst_poly env head then Some t_ty else None in
       p ~poly Term (Env.Term_cst.name env head)
@@ -748,8 +737,18 @@ module Make
     | B.Re_power n -> p Term (N.indexed "re.^" [int n])
     | B.Re_loop (n1, n2) -> p Term (N.indexed "re.loop" [int n1; int n2])
 
-    (* fallback *)
-    | _ -> _cannot_print "unknown term builtin"
+    (* generic case + fallback *)
+    | B.Base | _ ->
+      begin match find_named env head with
+        | None ->
+          let poly () = if term_cst_poly env head then Some t_ty else None in
+          p ~poly Term (Env.Term_cst.name env head)
+        | Some expr ->
+          assert (args = []);
+          let f_id = Dolmen_std.Id.create Term (Env.Term_cst.name env head) in
+          Format.fprintf fmt "(! %a@ :named %a)"
+            (term env) expr (id ~allow_keyword:false env) f_id
+      end
 
   and letin env fmt (l, body) =
     (* reset some env state *)
