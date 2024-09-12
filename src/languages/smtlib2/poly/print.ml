@@ -95,7 +95,9 @@ let num fmt s =
 let dec ~k fmt s =
   (* smtlib requires at least one digit before or after a `.` *)
   let s =
-    if String.length s >= 2 then
+    if not (String.contains s '.') then
+      s ^ ".0"
+    else if String.length s >= 2 then
       if s.[0] = '.'
       then "0" ^ s
       else if s.[String.length s - 1] = '.'
@@ -387,6 +389,15 @@ module Make
     | Var v -> Env.Term_var.bind env v
     | Constructor (_, l) -> List.fold_left Env.Term_var.bind env l
 
+  let extract_int_lit t =
+    match V.Term.view t with
+    | App (head, [], []) ->
+      begin match V.Term.Cst.builtin head with
+        | B.Integer s -> Some s
+        | _ -> None
+      end
+    | _ -> None
+
   let term_cst_chainable _env c =
     (* WARNING: this `blt` function should only be called with builtins that
        do not have payload (such as terms), since the polymorphic comparison
@@ -541,13 +552,18 @@ module Make
             | App (ah, []), App (bh, [])
               when (match V.Ty.Cst.builtin ah with B.Int -> true | _ -> false) &&
                    (match V.Ty.Cst.builtin bh with B.Real -> true | _ -> false) ->
-              if can_omit_to_real env then
-                match args with
+              begin match args with
+                | [t] when can_omit_to_real env -> term env fmt t
                 | [t] ->
-                  term env fmt t
-                | _ -> _cannot_print "bad application of coercion"
-              else
-                simple "to_real"
+                  if can_omit_to_real env then
+                    term env fmt t
+                  else
+                    begin match extract_int_lit t with
+                      | Some n -> aux (Dolmen_std.Id.create (Value Real) (N.simple n)) []
+                      | None -> simple "to_real"
+                    end
+                | _ -> simple "to_real"
+              end
 
             (* fallback *)
             | _ -> _cannot_print "unhandled builtin"
