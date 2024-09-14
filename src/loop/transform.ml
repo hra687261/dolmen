@@ -293,9 +293,9 @@ module Smtlib2
             attrs = [];
             implicit = false;
           } in
-          add_stmt acc exit
+          add_post_logic_stmt acc exit
         in
-        let acc = add_stmt acc stmt in
+        let acc = add_post_logic_stmt acc stmt in
         flush st acc res
       end
 

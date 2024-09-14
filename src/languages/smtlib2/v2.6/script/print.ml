@@ -923,6 +923,7 @@ module Make
 
   let attribute env fmt t =
     match S.view t with
+    | Symbol _ when is_keyword t -> sexpr env fmt t
     | App ([k; _]) when is_keyword k -> sexpr env fmt t
     | _ -> _cannot_print "not an attribtue"
 

@@ -11,6 +11,8 @@ module Misc = Dolmen_std.Misc
 
 exception Cannot_print of string
 
+
+
 (* TODO: structured errors *)
 let _cannot_print format =
   Format.kasprintf (fun msg -> raise (Cannot_print msg)) format
@@ -922,6 +924,7 @@ module Make
 
   let attribute env fmt t =
     match S.view t with
+    | Symbol _ when is_keyword t -> sexpr env fmt t
     | App ([k; _]) when is_keyword k -> sexpr env fmt t
     | _ -> _cannot_print "not an attribtue"
 
