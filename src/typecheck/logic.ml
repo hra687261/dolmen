@@ -682,8 +682,11 @@ module Smtlib2 = struct
 
       | B.Abs -> aux (add_arith `Int acc)
 
+      | B.Floor_to_int `Real ->
+        aux (add_arith `Real (add_arith `Int acc))
+
+
       | B.Is_int (`Real as k)
-      | B.Floor_to_int (`Real as k)
       | B.Lt (#arith as k) | B.Leq (#arith as k)
       | B.Gt (#arith as k) | B.Geq (#arith as k)
         -> aux (add_arith k acc)
