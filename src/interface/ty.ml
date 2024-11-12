@@ -411,6 +411,14 @@ module type Smtlib_String = sig
 
 end
 
+module type Smtlib_Seq = sig
+
+  type t
+
+  val seq : t -> t
+
+end
+
 (** Signature required by types for typing tptp *)
 module type Zf_Base = sig
 

@@ -663,6 +663,8 @@ module Ty : sig
     val string_reg_lang : t
     (** The type constant for regular languages over strings. *)
 
+    val seq : t
+
   end
 
   val prop : t
@@ -691,6 +693,8 @@ module Ty : sig
 
   val string_reg_lang : t
   (** The type of regular language over strings. *)
+
+  val seq : t -> t
 
   val of_var : Var.t -> t
   (** Create a type from a variable. *)
@@ -1581,6 +1585,16 @@ module Term : sig
 
       end
     end
+
+    module Seq : sig
+      val empty : t
+      val unit : t
+      val len : t
+      val nth : t
+      val update : t
+      val extract : t
+      val concat : index -> t
+    end
   end
 
   (** A module for Algebraic datatype constructors. *)
@@ -2021,5 +2035,14 @@ module Term : sig
 
   end
 
+  module Seq : sig
+    val empty : ty -> t
+    val unit : t -> t
+    val len : t -> t
+    val nth : t -> t -> t
+    val update : t -> t -> t -> t
+    val extract : t -> t -> t -> t
+    val concat : t list -> t
+  end
 end
 

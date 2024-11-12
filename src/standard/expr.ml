@@ -1044,6 +1044,7 @@ module Ty = struct
           mk' ~builtin:(Builtin.Float(e,s)) (Format.asprintf "FloatingPoint_%d_%d" e s) 0
         )
     let roundingMode = mk' ~builtin:Builtin.RoundingMode "RoundingMode" 0
+    let seq = mk' ~builtin:Builtin.Seq "Seq" 1
   end
 
   (* Builtin types *)
@@ -1060,7 +1061,7 @@ module Ty = struct
   let float' es = apply (Const.float es) []
   let float e s = float' (e,s)
   let roundingMode = apply Const.roundingMode []
-
+  let seq e = apply Const.seq [e]
   (* alias for alt-ergo *)
   let bool = prop
 
@@ -2819,6 +2820,63 @@ module Term = struct
 
     end
 
+    module Seq = struct
+
+      let empty =
+        let a = Ty.Var.mk "alphaX" in
+        let a_ty = Ty.of_var a in
+        let a_s_ty = Ty.seq a_ty in
+        mk' ~name:"seq.empty" ~builtin:Builtin.Seq_empty "seq.empty"
+          [ a ] [] a_s_ty
+
+      let unit =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_s_ty = Ty.seq a_ty in
+        mk' ~name:"seq.unit" ~builtin:Builtin.Seq_unit "seq.unit"
+          [ a ] [ a_ty ] a_s_ty
+
+      let len =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_s_ty = Ty.seq a_ty in
+        mk' ~name:"seq.len" ~builtin:Builtin.Seq_len "seq.len"
+          [ a ] [ a_s_ty ] Ty.int
+
+      let nth =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_s_ty = Ty.seq a_ty in
+        mk' ~name:"seq.nth" ~builtin:Builtin.Seq_nth "seq.nth"
+          [ a ][ a_s_ty; Ty.int ] a_ty
+
+      let update =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_s_ty = Ty.seq a_ty in
+        mk' ~name:"seq.update" ~builtin:Builtin.Seq_update "seq.update"
+          [ a ]  [ a_s_ty; Ty.int; a_s_ty ] a_s_ty
+
+      let extract =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_s_ty = Ty.seq a_ty in
+        mk' ~name:"seq.extract" ~builtin:Builtin.Seq_extract "seq.extract"
+          [ a ]  [ a_s_ty; Ty.int; Ty.int ] a_s_ty
+
+      let concat : int -> term_cst =
+        with_cache (
+          fun i ->
+            let a = Ty.Var.mk "alphaY" in
+            let a_ty = Ty.of_var a in
+            let a_ns_ty = Ty.seq a_ty in
+            let ty = Ty.arrow (List.init i (fun _ -> a_ns_ty)) a_ns_ty in
+            mk' ~name:"seq.++" ~builtin:Builtin.Seq_concat  "seq.++"
+              [ a ] [] ty
+        )
+
+    end
+
   end
 
   (* Constructors are simply constants *)
@@ -3772,6 +3830,46 @@ module Term = struct
       let power n re = apply_cst (Const.String.Reg_Lang.power n) [] [re]
       let loop n1 n2 re = apply_cst (Const.String.Reg_Lang.loop (n1, n2)) [] [re]
     end
+
+  end
+
+  module Seq = struct
+    let match_seq_elem_type =
+      let elem = Ty.Var.mk "_" in
+      let pat = Ty.seq (Ty.of_var elem) in
+      (fun t ->
+         match Ty.pmatch Subst.empty pat (ty t) with
+         | exception Ty.Impossible_matching _ -> raise (Wrong_type (t, pat))
+         | s -> begin match Subst.Var.get elem s with
+             | res -> res
+             | exception Not_found -> assert false (* internal error *)
+           end)
+
+    let empty ty = apply_cst Const.Seq.empty [ty] []
+
+    let unit v =
+      let vty = ty v in
+      apply_cst Const.Seq.unit [vty] [v]
+
+    let len s =
+      let ty = match_seq_elem_type s in
+      apply_cst Const.Seq.len [ty] [s]
+
+    let nth s i =
+      let ty = match_seq_elem_type s in
+      apply_cst Const.Seq.nth [ty] [s;i]
+
+    let update s1 i s2 =
+      let ty = match_seq_elem_type s1 in
+      apply_cst Const.Seq.update [ty] [s1;i;s2]
+
+    let extract s i l =
+      let ty = match_seq_elem_type s in
+      apply_cst Const.Seq.extract [ty] [s;i;l]
+
+    let concat l =
+      let ty = match_seq_elem_type (List.hd l) in
+      apply_cst (Const.Seq.concat (List.length l)) [ty] l
 
   end
 

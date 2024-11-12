@@ -1886,6 +1886,25 @@ module type Smtlib_String = sig
 
 end
 
+module type Smtlib_Seq = sig
+
+  type t
+  type ty
+
+  module Seq: sig
+    val empty : ty -> t
+
+    val unit : t -> t
+
+    val len : t -> t
+    val nth : t -> t -> t
+    val update : t -> t -> t -> t
+    val extract : t -> t -> t -> t
+    val concat : t list -> t
+  end
+
+end
+
 module type Zf_Base = sig
 
   type t
