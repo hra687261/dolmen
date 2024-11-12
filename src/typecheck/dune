@@ -14,7 +14,7 @@
     ; TFF and THF typechecking
     Intf Tff_intf Tff Thf_intf Thf
     ; Builtins
-    Core Def Arith Arrays Bitv Float Strings Seqs
+    Core Def Arith Arrays Bitv Float Strings Seqs Nseqs
     ; Helpers
     Base Logic Misc
   )

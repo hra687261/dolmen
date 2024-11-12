@@ -67,6 +67,9 @@ module Smtlib2_String =
 module Smtlib2_Seq =
   Dolmen_type.Seqs.Smtlib2.Tff(T)
     (Dolmen.Std.Expr.Ty)(Dolmen.Std.Expr.Term)
+module Smtlib2_NSeq =
+  Dolmen_type.Nseqs.Smtlib2.Tff(T)
+    (Dolmen.Std.Expr.Ty)(Dolmen.Std.Expr.Term)
 
 (* Zf *)
 module Zf_Core =
@@ -1490,7 +1493,7 @@ module Typer(State : State.S) = struct
           Smtlib2_Reals.parse ~config:l.features.arithmetic v :: acc
         | `Reals_Ints ->
           Smtlib2_Reals_Ints.parse ~config:l.features.arithmetic v :: acc
-      ) [Smtlib2_Seq.parse v] l.Dolmen_type.Logic.Smtlib2.theories
+      ) [Smtlib2_Seq.parse v;Smtlib2_NSeq.parse v] l.Dolmen_type.Logic.Smtlib2.theories
 
   let typing_env ?(attrs=[]) ~loc warnings (st : State.t) (input : input) =
     let file = file_loc_of_input input in

@@ -1045,6 +1045,7 @@ module Ty = struct
         )
     let roundingMode = mk' ~builtin:Builtin.RoundingMode "RoundingMode" 0
     let seq = mk' ~builtin:Builtin.Seq "Seq" 1
+    let nseq = mk' ~builtin:Builtin.NSeq "NSeq" 1
   end
 
   (* Builtin types *)
@@ -1062,6 +1063,8 @@ module Ty = struct
   let float e s = float' (e,s)
   let roundingMode = apply Const.roundingMode []
   let seq e = apply Const.seq [e]
+  let nseq e = apply Const.nseq [e]
+
   (* alias for alt-ergo *)
   let bool = prop
 
@@ -2877,6 +2880,73 @@ module Term = struct
 
     end
 
+    module NSeq = struct
+
+      let first =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.first" ~builtin:Builtin.NSeq_first "nseq.first"
+          [ a ] [ a_ns_ty ] Ty.int
+
+      let last =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.last" ~builtin:Builtin.NSeq_last "nseq.last"
+          [ a ] [ a_ns_ty ] Ty.int
+
+      let get =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.get" ~builtin:Builtin.NSeq_get  "nseq.get"
+          [ a ] [ a_ns_ty; Ty.int ] a_ty
+
+      let set =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.set" ~builtin:Builtin.NSeq_set "nseq.set"
+          [ a ] [ a_ns_ty; Ty.int; a_ty ] a_ns_ty
+
+      let const =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.const" ~builtin:Builtin.NSeq_const "nseq.const"
+          [ a ]  [ Ty.int; Ty.int; a_ty ] a_ns_ty
+
+      let relocate =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.relocate" ~builtin:Builtin.NSeq_relocate "nseq.relocate"
+          [ a ] [ a_ns_ty; Ty.int ] a_ns_ty
+
+      let concat =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.concat" ~builtin:Builtin.NSeq_concat "nseq.concat"
+          [ a ] [ a_ns_ty; a_ns_ty ] a_ns_ty
+
+      let slice  =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.slice" ~builtin:Builtin.NSeq_slice "nseq.slice"
+          [ a ] [ a_ns_ty; Ty.int; Ty.int ] a_ns_ty
+
+      let update  =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.update" ~builtin:Builtin.NSeq_update "nseq.update"
+          [ a ] [ a_ns_ty; a_ns_ty ] a_ns_ty
+
+    end
+
   end
 
   (* Constructors are simply constants *)
@@ -3870,6 +3940,56 @@ module Term = struct
     let concat l =
       let ty = match_seq_elem_type (List.hd l) in
       apply_cst (Const.Seq.concat (List.length l)) [ty] l
+
+  end
+
+  module NSeq = struct
+    let match_nseq_elem_type =
+      let elem = Ty.Var.mk "_" in
+      let pat = Ty.nseq (Ty.of_var elem) in
+      (fun t ->
+         match Ty.pmatch Subst.empty pat (ty t) with
+         | exception Ty.Impossible_matching _ -> raise (Wrong_type (t, pat))
+         | s -> begin match Subst.Var.get elem s with
+             | res -> res
+             | exception Not_found -> assert false (* internal error *)
+           end)
+
+    let first s =
+      let ty = match_nseq_elem_type s in
+      apply_cst Const.NSeq.first [ty] [s]
+
+    let last s =
+      let ty = match_nseq_elem_type s in
+      apply_cst Const.NSeq.last [ty] [s]
+
+    let get s i =
+      let ty = match_nseq_elem_type s in
+      apply_cst Const.NSeq.get [ty] [s;i]
+
+    let set s i v =
+      let ty = match_nseq_elem_type s in
+      apply_cst Const.NSeq.set [ty] [s;i;v]
+
+    let const f l v =
+      let vty = ty v in
+      apply_cst Const.NSeq.const [vty] [f;l;v]
+
+    let relocate s i =
+      let ty = match_nseq_elem_type s in
+      apply_cst Const.NSeq.relocate [ty] [s;i]
+
+    let concat s1 s2 =
+      let ty = match_nseq_elem_type s1 in
+      apply_cst Const.NSeq.concat [ty] [s1;s2]
+
+    let slice s f l =
+      let ty = match_nseq_elem_type s in
+      apply_cst Const.NSeq.slice [ty] [s;f;l]
+
+    let update s1 s2 =
+      let ty = match_nseq_elem_type s1 in
+      apply_cst Const.NSeq.update [ty] [s1;s2]
 
   end
 

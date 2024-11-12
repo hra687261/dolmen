@@ -243,3 +243,16 @@ type _ t +=
   | Seq_concat
   | Seq_extract
 
+(* n-Indexed Sequences *)
+(* ************************************************************************* *)
+type _ t +=
+  | NSeq
+  | NSeq_first
+  | NSeq_last
+  | NSeq_get
+  | NSeq_set
+  | NSeq_const
+  | NSeq_relocate
+  | NSeq_concat
+  | NSeq_slice
+  | NSeq_update

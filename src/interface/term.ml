@@ -1905,6 +1905,25 @@ module type Smtlib_Seq = sig
 
 end
 
+module type Smtlib_NSeq = sig
+  type t
+  type ty
+
+  module NSeq: sig
+    val first : t -> t
+    val last: t -> t
+    val get : t -> t -> t
+    val set : t -> t -> t -> t
+    val const: t -> t -> t -> t
+    val relocate : t -> t -> t
+    val concat : t -> t -> t
+    val slice : t -> t -> t -> t
+    val update : t -> t -> t
+
+  end
+
+end
+
 module type Zf_Base = sig
 
   type t

@@ -665,6 +665,8 @@ module Ty : sig
 
     val seq : t
 
+    val nseq : t
+
   end
 
   val prop : t
@@ -695,6 +697,8 @@ module Ty : sig
   (** The type of regular language over strings. *)
 
   val seq : t -> t
+
+  val nseq : t -> t
 
   val of_var : Var.t -> t
   (** Create a type from a variable. *)
@@ -1595,6 +1599,18 @@ module Term : sig
       val extract : t
       val concat : index -> t
     end
+
+    module NSeq: sig
+      val first : t
+      val last : t
+      val get : t
+      val set : t
+      val const : t
+      val relocate : t
+      val concat : t
+      val slice : t
+      val update : t
+    end
   end
 
   (** A module for Algebraic datatype constructors. *)
@@ -2043,6 +2059,18 @@ module Term : sig
     val update : t -> t -> t -> t
     val extract : t -> t -> t -> t
     val concat : t list -> t
+  end
+
+  module NSeq: sig
+    val first : t -> t
+    val last: t -> t
+    val get : t -> t -> t
+    val set : t -> t -> t -> t
+    val const: t -> t -> t -> t
+    val relocate : t -> t -> t
+    val concat : t -> t -> t
+    val slice : t -> t -> t -> t
+    val update : t -> t -> t
   end
 end
 
