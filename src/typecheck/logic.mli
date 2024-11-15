@@ -18,6 +18,8 @@ module Smtlib2 : sig
     | `Ints
     | `Reals
     | `Reals_Ints
+    | `Seq
+    | `NSeq
   ]
   (** Smtlib theories. *)
 
@@ -28,6 +30,8 @@ module Smtlib2 : sig
     quantifiers     : bool;
     arithmetic      : Arith.Smtlib2.config;
     arrays          : Arrays.Smtlib2.config;
+    seq: bool;
+    nseq: bool;
   }
   (** Smtlib features. *)
 
