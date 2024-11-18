@@ -18,6 +18,8 @@ module Smtlib2 = struct
     | `Ints
     | `Reals
     | `Reals_Ints
+    | `Seq
+    | `NSeq
   ]
 
   let print_theory fmt th =
@@ -30,6 +32,8 @@ module Smtlib2 = struct
     | `Ints -> Format.fprintf fmt "int"
     | `Reals -> Format.fprintf fmt "real"
     | `Reals_Ints -> Format.fprintf fmt "int+real"
+    | `Seq -> Format.fprintf fmt "seq"
+    | `NSeq -> Format.fprintf fmt "seq"
 
   let print_theories fmt l =
     let pp_sep fmt () = Format.fprintf fmt ",@ " in
@@ -42,10 +46,13 @@ module Smtlib2 = struct
     quantifiers     : bool;
     arithmetic      : Arith.Smtlib2.config;
     arrays          : Arrays.Smtlib2.config;
+    seq: bool;
+    nseq: bool;
   }
 
   let print_features fmt { free_sorts; free_functions;
-                           datatypes; quantifiers; arithmetic; arrays; } =
+                           datatypes; quantifiers; arithmetic; arrays;
+                           seq; nseq; } =
     Format.fprintf fmt
       "{ @[<hv>\
        free_sorts : %b;@ \
@@ -53,7 +60,9 @@ module Smtlib2 = struct
        datatypes : %b;@ \
        quantifiers : %b;@ \
        arithmetic : %a;@ \
-       arrays : %a; \
+       arrays : %a;@ \
+       seq : %b;@ \
+       nseq : %b; \
        }@]"
       free_sorts
       free_functions
@@ -61,6 +70,8 @@ module Smtlib2 = struct
       quantifiers
       Arith.Smtlib2.print_config arithmetic
       Arrays.Smtlib2.print_config arrays
+      seq
+      nseq
 
   type t = {
     theories      : theory list;
@@ -72,7 +83,8 @@ module Smtlib2 = struct
       print_theories theories print_features features
 
   let all = {
-    theories = [ `Core; `Arrays; `Bitvectors; `Floats; `String; `Reals_Ints ];
+    theories = [ `Core; `Arrays; `Bitvectors; `Floats; `String; `Reals_Ints;
+                 `Seq; `NSeq ];
     features = {
       free_sorts = true;
       free_functions = true;
@@ -80,6 +92,8 @@ module Smtlib2 = struct
       quantifiers = true;
       arrays = All;
       arithmetic = Regular;
+      seq = true;
+      nseq = true;
     };
   }
 
@@ -107,6 +121,8 @@ module Smtlib2 = struct
         quantifiers = true;
         arrays = All;
         arithmetic = Regular;
+        seq = false;
+        nseq = false;
       };
     } in
     let add_theory t c = { c with theories = t :: c.theories } in
@@ -339,6 +355,8 @@ module Smtlib2 = struct
       int_lits    : bool;
       reals       : bool;
       arith       : arith_config;
+      seq         : bool;
+      nseq        : bool;
     }
 
     (* simple helpers *)
@@ -439,6 +457,12 @@ module Smtlib2 = struct
       | Only_int_int | Only_ints_real ->
         { acc with arrays = All; }
 
+    (* seq helpers *)
+
+    let add_seq acc = {acc with seq = true}
+
+    let add_nseq acc = {acc with nseq = true}
+
     (* Type scanning
        Here, we are interested in the actual concrete types, hence
        we expand the types when viewing them. *)
@@ -486,6 +510,8 @@ module Smtlib2 = struct
                 end
               | _ -> assert false (* incorrect use of builtin B.Array *)
             end
+          | B.Seq -> aux (add_seq acc)
+          | B.NSeq -> aux (add_nseq acc)
           | _ ->
             raise (Unknown_ty_builtin f)
         end
@@ -834,6 +860,26 @@ module Smtlib2 = struct
       | B.Re_power _ | B.Re_loop _
         -> aux (add_string acc)
 
+      | B.Seq_empty
+      | B.Seq_unit
+      | B.Seq_len
+      | B.Seq_nth
+      | B.Seq_update
+      | B.Seq_concat
+      | B.Seq_extract
+        -> aux (add_seq acc)
+
+      | B.NSeq_first
+      | B.NSeq_last
+      | B.NSeq_get
+      | B.NSeq_set
+      | B.NSeq_const
+      | B.NSeq_relocate
+      | B.NSeq_concat
+      | B.NSeq_slice
+      | B.NSeq_update
+        -> aux (add_nseq acc)
+
       | b ->
         (* non-smtlib builtin *)
         let name = Obj.Extension_constructor.(name (of_val b)) in
@@ -866,7 +912,9 @@ module Smtlib2 = struct
               else Linear `Strict
             | Difference `UFIDL -> Difference `UFIDL
           end;
-        arrays = acc.arrays
+        arrays = acc.arrays;
+        seq = acc.seq;
+        nseq = acc.nseq;
       } in
       (* theories *)
       let add b (th : theory) l = if b then th :: l else l in
@@ -901,6 +949,8 @@ module Smtlib2 = struct
       int_lits = false;
       reals = false;
       arith = No_constraint;
+      seq = false;
+      nseq = false;
     }
 
   end

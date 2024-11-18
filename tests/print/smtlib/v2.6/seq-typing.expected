@@ -1,0 +1,12 @@
+Warning The logic used to typecheck the problem (ALL) is not minimal. The minimal logic actually is: QF_UFLIA
+(set-logic QF_UFLIA)
+(declare-sort E 0)
+(declare-const s (Seq E))
+(assert (= seq.empty seq.empty))
+(assert (= s (seq.unit (seq.nth s 0))))
+(assert (= s (seq.update s 0 s)))
+(assert (= s (seq.extract s 0 (seq.len s))))
+(assert (= s (seq.concat seq.empty s)))
+(assert (= s (seq.concat s seq.empty)))
+(check-sat)
+(exit)

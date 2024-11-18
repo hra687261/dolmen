@@ -98,7 +98,9 @@ other_1[0-15]:
                   datatypes : false;
                   quantifiers : true;
                   arithmetic : linear;
-                  arrays : all; }; }]}
+                  arrays : all;
+                  seq : false;
+                  nseq : false; }; }]}
 
 decl_1[16-37]:
   decls:

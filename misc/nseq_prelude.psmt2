@@ -1,0 +1,15 @@
+(set-logic ALL)
+
+(declare-sort NSeq 1)
+
+(declare-fun nseq.get (par (a) ((NSeq a) Int) a))
+(declare-fun nseq.set (par (a) ((NSeq a) Int a) (NSeq a)))
+(declare-fun nseq.first (par (a) ((NSeq a)) Int))
+(declare-fun nseq.last (par (a) ((NSeq a)) Int))
+(declare-fun nseq.content (par (a) ((NSeq a)) (Array Int a)))
+(declare-fun nseq.length (par (a) ((NSeq a)) Int))
+(declare-fun nseq.const (par (a) (Int Int a) (NSeq a)))
+(declare-fun nseq.concat (par (a) ((NSeq a) (NSeq a)) (NSeq a)))
+(declare-fun nseq.relocate (par (a) ((NSeq a) Int) (NSeq a)))
+(declare-fun nseq.slice (par (a) ((NSeq a) Int Int) (NSeq a)))
+(declare-fun nseq.update (par (a) ((NSeq a) (NSeq a)) (NSeq a)))

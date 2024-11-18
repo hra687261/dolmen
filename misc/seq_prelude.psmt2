@@ -1,0 +1,11 @@
+(set-logic ALL)
+
+(declare-sort Seq 1)
+
+(declare-fun seq.empty (par (a) () (Seq a)))
+(declare-fun seq.unit (par (a) (a) (Seq a)))
+(declare-fun seq.len (par (a) ((Seq a)) Int))
+(declare-fun seq.nth (par (a) ((Seq a) Int) a))
+(declare-fun seq.update (par (a) ((Seq a) Int (Seq a)) (Seq a)))
+(declare-fun seq.++ (par (a) ((Seq a) (Seq a)) (Seq a)))
+(declare-fun seq.extract (par (a) ((Seq a) Int Int) (Seq a)))

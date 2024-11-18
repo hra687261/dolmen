@@ -2851,21 +2851,21 @@ module Term = struct
         let a_ty = Ty.of_var a in
         let a_s_ty = Ty.seq a_ty in
         mk' ~name:"seq.nth" ~builtin:Builtin.Seq_nth "seq.nth"
-          [ a ][ a_s_ty; Ty.int ] a_ty
+          [ a ] [ a_s_ty; Ty.int ] a_ty
 
       let update =
         let a = Ty.Var.mk "alpha" in
         let a_ty = Ty.of_var a in
         let a_s_ty = Ty.seq a_ty in
         mk' ~name:"seq.update" ~builtin:Builtin.Seq_update "seq.update"
-          [ a ]  [ a_s_ty; Ty.int; a_s_ty ] a_s_ty
+          [ a ] [ a_s_ty; Ty.int; a_s_ty ] a_s_ty
 
       let extract =
         let a = Ty.Var.mk "alpha" in
         let a_ty = Ty.of_var a in
         let a_s_ty = Ty.seq a_ty in
         mk' ~name:"seq.extract" ~builtin:Builtin.Seq_extract "seq.extract"
-          [ a ]  [ a_s_ty; Ty.int; Ty.int ] a_s_ty
+          [ a ] [ a_s_ty; Ty.int; Ty.int ] a_s_ty
 
       let concat : int -> term_cst =
         with_cache (

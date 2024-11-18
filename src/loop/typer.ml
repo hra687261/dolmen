@@ -1493,7 +1493,9 @@ module Typer(State : State.S) = struct
           Smtlib2_Reals.parse ~config:l.features.arithmetic v :: acc
         | `Reals_Ints ->
           Smtlib2_Reals_Ints.parse ~config:l.features.arithmetic v :: acc
-      ) [Smtlib2_Seq.parse v;Smtlib2_NSeq.parse v] l.Dolmen_type.Logic.Smtlib2.theories
+        | `Seq -> Smtlib2_Seq.parse v :: acc
+        | `NSeq -> Smtlib2_NSeq.parse v :: acc
+      ) [] l.Dolmen_type.Logic.Smtlib2.theories
 
   let typing_env ?(attrs=[]) ~loc warnings (st : State.t) (input : input) =
     let file = file_loc_of_input input in
