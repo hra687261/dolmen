@@ -58,6 +58,12 @@ module Wrap
     | Term_var v -> Term_var.namespace v
     | Term_cst c -> Term_cst.namespace c
 
+  let print fmt = function
+    | Ty_var v -> Format.fprintf fmt "%a" Ty_var.print v
+    | Ty_cst c -> Format.fprintf fmt "%a" Ty_cst.print c
+    | Term_var v -> Format.fprintf fmt "%a" Term_var.print v
+    | Term_cst c -> Format.fprintf fmt "%a" Term_cst.print c
+
   module Map = struct
 
     type key = t
@@ -116,6 +122,7 @@ module Wrap
       let acc = Term_var.Map.fold (fun v x acc -> f (Term_var v) x acc) t.term_vars acc in
       let acc = Term_cst.Map.fold (fun c x acc -> f (Term_cst c) x acc) t.term_csts acc in
       acc
+
   end
 
 end
@@ -195,8 +202,8 @@ module Make(Tid : Arg) : S with type id := Tid.t = struct
     let binding = binding original pid in
     let t =
       { t with
-      in_scope = Pid.Map.add pid tid t.in_scope;
-      bindings = Tid.Map.add tid binding t.bindings; }
+        in_scope = Pid.Map.add pid tid t.in_scope;
+        bindings = Tid.Map.add tid binding t.bindings; }
     in
     t
 
@@ -262,7 +269,7 @@ module Make(Tid : Arg) : S with type id := Tid.t = struct
     match Tid.Map.find_opt id t.bindings with
     | None ->
       (* TODO: proper error, missing id. *)
-      failwith "cannot find binding for id"
+      failwith (Format.asprintf "cannot find binding for id: %a" Tid.print id)
     | Some binding ->
       let pid = pid binding in
       begin match Pid.Map.find_opt pid t.in_scope with

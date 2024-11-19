@@ -120,9 +120,9 @@ let output_conv =
 (* ************************************************************************* *)
 
 let input_mode_list = [
-    "full", `Full;
-    "incremental", `Incremental;
-  ]
+  "full", `Full;
+  "incremental", `Incremental;
+]
 
 let input_mode_conv = Arg.enum input_mode_list
 
@@ -385,7 +385,7 @@ let mk_run_state
     abort_on_bug
     time_limit size_limit
     response_file output_file
-    flow_check compute_logic
+    flow_check compute_logic translate
     header_check header_licenses header_lang_version
     smtlib2_forced_logic smtlib2_exts
     type_check extension_builtins
@@ -427,10 +427,10 @@ let mk_run_state
   |> Loop.Typer_Pipe.init ~type_check
   |> Loop.Check.init
     ~check_model
-    (* ~check_model_mode *)
+  (* ~check_model_mode *)
   |> Loop.Flow.init ~flow_check
   |> Loop.Export.init ?output_file
-  |> Loop.Transform.init ~compute_logic
+  |> Loop.Transform.init ~compute_logic ~translate
   |> Loop.Header.init
     ~header_check
     ~header_licenses
@@ -444,7 +444,7 @@ let profiling_t =
   let stats =
     let doc = "Enable statistics collecting and printing" in
     Arg.(value & flag & info ["stats"] ~doc ~docs)
-    in
+  in
   let memtrace_filename =
     let doc = "Filename for the memory profiling trace" in
     Arg.(value & opt (some string) None & info ["memtrace"] ~doc ~docs ~docv:"FILE")
@@ -500,8 +500,8 @@ let reports =
     let doc = "Change the status of a warning. Accepts a list of      \
                comma-separated modifiers of the form @mnemonic, where \
                '@' is an (optional) modifier among '+' (default) to   \
-                enable a warning, '-' to disable a warning and '!' to \
-                make the warning fatal, and 'mnemonic' is the short   \
+               enable a warning, '-' to disable a warning and '!' to \
+               make the warning fatal, and 'mnemonic' is the short   \
                (mnemonic) name of the warning." in
     Arg.(value  & opt_all c_warn_list [] & info ["w"; "warn"] ~docs ~doc)
   in
@@ -643,6 +643,10 @@ let state =
                used during export to the smtlib2 format." in
     Arg.(value & opt bool false & info ["compute-logic"] ~doc) (* TODO: new doc section *)
   in
+  let translate =
+    let doc = "Translate from the Seq theory to the NSeq theory" in
+    Arg.(value & flag & info ["seq2nseq"] ~doc)
+  in
   let header_check =
     let doc = "If true, then the presence of headers will be checked in the
                input file (and errors raised if they are not present)." in
@@ -675,7 +679,7 @@ let state =
   let smtlib2_extensions =
     let doc = Format.asprintf
         "Activate smtlib2 extension. Currently an experimental option. \
-        $(docv) must be %s" (Arg.doc_alts_enum smtlib2_ext_list)
+         $(docv) must be %s" (Arg.doc_alts_enum smtlib2_ext_list)
     in
     Arg.(value & opt_all smtlib2_ext [] &
          info ["internal-smtlib2-extension"] ~docs:internal_section ~doc)
@@ -729,25 +733,25 @@ let state =
          would be too long), and lastly $(b,minimal) prints each report on one line"
     in
     Arg.(value & opt report_style Contextual & info ["report-style"] ~doc ~docs:error_section)
-    in
+  in
   let max_warn =
     let doc = Format.asprintf
         "Maximum number of warnings to display (excess warnings will be
          counted and a count of silenced warnings reported at the end)." in
     Arg.(value & opt int max_int & info ["max-warn"] ~doc ~docs:error_section)
+  in
+  let syntax_error_ref =
+    let doc = Format.asprintf
+        "Print the syntax error reference number when a syntax error is raised."
     in
-    let syntax_error_ref =
-      let doc = Format.asprintf
-         "Print the syntax error reference number when a syntax error is raised."
-      in
-      Arg.(value & opt bool false & info ["syntax-error-ref"] ~doc ~docs:error_section)
-    in
+    Arg.(value & opt bool false & info ["syntax-error-ref"] ~doc ~docs:error_section)
+  in
   Term.(const mk_run_state $ profiling_t $
         gc $ gc_t $ bt $ colors $
         abort_on_bug $
         time $ size $
         response_file $ output_file $
-        flow_check $ compute_logic $
+        flow_check $ compute_logic $ translate $
         header_check $ header_licenses $ header_lang_version $
         force_smtlib2_logic $ smtlib2_extensions $
         typing $ typing_ext $

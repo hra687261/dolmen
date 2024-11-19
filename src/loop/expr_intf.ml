@@ -53,13 +53,13 @@ module type Export = sig
     type t = ty
     module Var : sig
       include Dolmen_intf.Id.Scope
-      with type t = ty_var
-       and type path := Dolmen_std.Path.t
+        with type t = ty_var
+         and type path := Dolmen_std.Path.t
     end
     module Const : sig
       include Dolmen_intf.Id.Scope
-      with type t = ty_cst
-       and type path := Dolmen_std.Path.t
+        with type t = ty_cst
+         and type path := Dolmen_std.Path.t
     end
   end
 
@@ -77,14 +77,14 @@ module type Export = sig
 
     module Var : sig
       include Dolmen_intf.Id.Scope
-      with type t = term_var
-       and type path := Dolmen_std.Path.t
+        with type t = term_var
+         and type path := Dolmen_std.Path.t
     end
 
     module Const : sig
       include Dolmen_intf.Id.Scope
-      with type t = term_cst
-       and type path := Dolmen_std.Path.t
+        with type t = term_cst
+         and type path := Dolmen_std.Path.t
 
       val mk : Dolmen_std.Path.t -> ty -> t
       (** Create a constant symbol *)

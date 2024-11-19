@@ -1,0 +1,50 @@
+
+> seq.empty:
+
+
+> seq.unit v:
+  const(0, 0, v)
+
+
+> seq.len s:
+  last(s) + 1
+
+
+> seq.nth s i:
+  get(s, i)
+
+
+> seq.update a i b:
+  if i < 0 || i > last(a) then
+    a
+  else
+    if i + last(b) > last(a) then
+      update(a, slice(relocate(b,i), i, last(a)))
+    else
+      update(a, relocate(b,i))
+> or:
+  if  i < 0 || i > last(a) then
+    a
+  else
+    update_inter (a, relocate(b,i))
+
+
+> seq.++ a b c:
+  ; ab = concat(a, relocate(b, last(a)+1))
+  concat(ab, relocate(c, last(ab) + 1))
+
+
+> seq.extract a i l:
+  if i < 0 || i > last(a) || l <= 0 then
+    a
+  else
+    if i + l - 1 > last(a) then
+      slice(a, i, last(a))
+    else
+      slice(a, i, i + l - 1)
+> or:
+  if i < 0 || i > last(a) || l <= 0 then
+    a
+  else
+    slice_inter(a, i, i + l - 1)
+

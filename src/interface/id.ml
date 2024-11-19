@@ -75,6 +75,8 @@ module type Scope = sig
   module Map : Map.S with type key = t
   (** A module for Maps on ids. *)
 
+  val print : Format.formatter -> t -> unit
+
 end
 
 module type Scope_Full = sig

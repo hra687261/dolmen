@@ -142,8 +142,8 @@ module Smtlib2
             attrs = [];
             implicit = false;
             contents = `Decls (false, [`Type_decl (cst,
-                Dolmen.Std.Expr.Ty.definition cst
-              )]);
+                                                   Dolmen.Std.Expr.Ty.definition cst
+                                                  )]);
           } in
           declare_unit :: acc
         end
@@ -314,6 +314,236 @@ module Smtlib2
 
 end
 
+(* Seq2NSeq translation *)
+(* ************************************************************************ *)
+
+module Seq2NSeq
+    (State : State.S)
+    (Typer_Types : Typer.Types
+     with type ty = Dolmen_std.Expr.ty
+      and type ty_var = Dolmen_std.Expr.ty_var
+      and type ty_cst = Dolmen_std.Expr.ty_cst
+      and type ty_def = Dolmen_std.Expr.ty_def
+      and type term = Dolmen_std.Expr.term
+      and type term_var = Dolmen_std.Expr.term_var
+      and type term_cst = Dolmen_std.Expr.term_cst
+      and type formula = Dolmen_std.Expr.term)
+= struct
+
+  let pipe = "Transform"
+
+  module View = Dolmen_std.Expr.View.TFF
+  module S = Dolmen_type.Logic.Smtlib2.Scan(View)
+  module Expr = Dolmen_std.Expr
+  module Term = Expr.Term
+  module Ty = Expr.Ty
+  module Builtin = Dolmen_std.Builtin
+
+  type acc = {
+    new_stmts : Typer_Types.typechecked Typer_Types.stmt list;
+  }
+
+  let init () = {new_stmts = []}
+
+  let translate_binder (binder: Expr.binder): Expr.binder =
+    binder
+
+  let translate_app (term: View.term) (tyl: View.ty list) (tl: View.term list) =
+    term, tyl, tl
+
+  let mk_concat =
+    let rec aux prec l =
+      match l with
+      | [] -> prec
+      | h :: t ->
+        let next_fst = Term.Int.add (Term.NSeq.last prec) (Term.Int.mk "1") in
+        let prec = Term.NSeq.concat prec (Term.NSeq.relocate h next_fst) in
+        aux prec t
+    in
+    fun (l: View.term list): View.term ->
+      match l with
+      | [] | [_] -> assert false
+      | h :: t -> aux h t
+
+  let translate_term (term: View.term): View.term =
+    match term.term_descr with
+    | App (
+        {term_descr = Cst {builtin = Builtin.Seq_unit; _}; _},
+        [ _ ], [ v ]
+      ) ->
+      Term.NSeq.const (Term.Int.mk "0") (Term.Int.mk "0") v
+
+    | App (
+        {term_descr = Cst {builtin = Builtin.Seq_len; _}; _},
+        [ _ ], [ s ]
+      ) ->
+      Term.Int.add (Term.NSeq.last s) (Term.Int.mk "1")
+
+    | App (
+        {term_descr = Cst {builtin = Builtin.Seq_nth; _}; _},
+        [ _ ], [ s; i ]
+      ) ->
+      Term.NSeq.get s i
+
+    | App (
+        {term_descr = Cst {builtin = Builtin.Seq_concat; _}; _},
+        [ _ ], l
+      ) ->
+      mk_concat l
+
+    | App (
+        {term_descr = Cst {builtin = Builtin.Seq_update; _}; _},
+        [ _ ], [ a; i; b ]
+      ) ->
+      let lsta = Term.NSeq.last a in
+      let lstb = Term.NSeq.last b in
+      let c1 = Term._or [
+          Term.Int.lt i (Term.Int.mk "0");
+          Term.Int.gt i lsta ]
+      in
+      let c2 =
+        Term.Int.gt (Term.Int.add i lstb) lsta
+      in
+      let relb = Term.NSeq.relocate b i in
+      let slrelb = Term.NSeq.slice relb i lsta in
+      Term.ite c1 a
+        (Term.ite c2
+           (Term.NSeq.update a slrelb)
+           (Term.NSeq.update a relb))
+
+    | App (
+        {term_descr = Cst {builtin = Builtin.Seq_extract; _}; _},
+        [ _ ], [ a; i; l ]
+      ) ->
+      let lsta = Term.NSeq.last a in
+      let c1 = Term._or [
+          Term.Int.lt i (Term.Int.mk "0");
+          Term.Int.gt i lsta;
+          Term.Int.le l (Term.Int.mk "0")]
+      in
+      let lstls = Term.Int.sub (Term.Int.add i l) (Term.Int.mk "1") in
+      let c2 = Term.Int.gt lstls lsta in
+      Term.ite c1 a
+        (Term.ite c2
+           (Term.NSeq.slice a i lsta)
+           (Term.NSeq.slice a i lstls))
+
+    | _ -> term
+
+
+  let rec translate_ty (ty: Typer_Types.ty): Typer_Types.ty =
+    match ty.Expr.ty_descr with
+    | TyVar _ -> ty
+    | TyApp ({builtin = Builtin.Seq; _ }, [v]) ->
+      Ty.nseq v
+    | TyApp (ty_cst, tyl) ->
+      Ty.apply ty_cst (List.map translate_ty tyl)
+    | Arrow (tyl, ty) ->
+      Ty.arrow (List.map translate_ty tyl) (translate_ty ty)
+    | Pi (tyvl, ty) ->
+      Ty.pi tyvl (translate_ty ty)
+
+  let translate_term_cst_ty (t: Expr.ty Expr.id) =
+    Term.Const.mk t.path (translate_ty t.id_ty)
+
+  let translate_ty_def (ty_def: Typer_Types.ty_def): Typer_Types.ty_def =
+    match ty_def with
+    | Abstract -> ty_def
+    | Adt {ty; record; cases} ->
+      let cases =
+        Array.map (fun Expr.{cstr; tester; dstrs} ->
+            let dstrs = Array.map (Option.map translate_term_cst_ty) dstrs in
+            Expr.{cstr; tester; dstrs}
+          ) cases
+      in
+      Adt {ty; record; cases}
+
+  let translate_decl (d: Typer_Types.decl): Typer_Types.decl =
+    match d with
+    | `Type_decl (_, None) -> d
+    | `Type_decl (ty, Some ty_def) -> `Type_decl (ty, Some (translate_ty_def ty_def))
+    | `Term_decl tc -> `Term_decl (translate_term_cst_ty tc)
+
+  let translate_stmt (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
+    match stmt.contents with
+    | `Decls (b, decl) -> (
+        st,
+        { new_stmts = {
+              stmt with
+              contents = `Decls (b, List.map translate_decl decl)} :: acc.new_stmts },
+        res
+      )
+    | `Defs (b, defl) ->
+      let defl =
+        List.fold_left (fun acc def ->
+            match def with
+            | `Type_alias _ -> def :: acc
+            | `Term_def (id, tcst, tyvl, params, body) ->
+              `Term_def (
+                id, tcst, tyvl,
+                List.map translate_term_cst_ty params,
+                translate_term body
+              ) :: acc
+            | `Instanceof (id, f, ty_args, vars, params, body) ->
+              `Instanceof (
+                id, f, ty_args, vars,
+                List.map translate_term_cst_ty params,
+                translate_term body
+              ) :: acc
+          ) [] defl |> List.rev
+      in
+      (st,
+       { new_stmts = {
+             stmt with
+             contents = `Defs (b, defl)} :: acc.new_stmts },
+       res)
+
+    | `Hyp t -> (
+        st,
+        { new_stmts = {
+              stmt with
+              contents = `Hyp (translate_term t)} :: acc.new_stmts },
+        res
+      )
+    | `Goal t -> (
+        st,
+        { new_stmts = {
+              stmt with
+              contents = `Goal (translate_term t)} :: acc.new_stmts },
+        res
+      )
+    | `Clause l -> (
+        st,
+        { new_stmts = {
+              stmt with
+              contents = `Clause (List.map translate_term l)} :: acc.new_stmts },
+        res
+      )
+    | `Solve (hyps, goals) -> (
+        st,
+        { new_stmts = {
+              stmt with
+              contents = `Solve (
+                  List.map translate_term hyps,
+                  List.map translate_term goals
+                )
+            } :: acc.new_stmts },
+        res
+      )
+    | `Get_value l -> (
+        st,
+        { new_stmts = {stmt with contents = `Get_value (List.map translate_term l)} :: acc.new_stmts },
+        res
+      )
+    | `End ->
+      st, { new_stmts = [] }, List.rev_append acc.new_stmts res
+    | _  -> (st, { new_stmts = stmt :: acc.new_stmts }, res)
+
+  let transform st acc (l : Typer_Types.typechecked Typer_Types.stmt list) =
+    List.fold_left translate_stmt (st, acc, []) l
+
+end
+
 (* Pipe functor *)
 (* ************************************************************************ *)
 
@@ -351,6 +581,7 @@ module Make
   (* available transformers *)
 
   module Smt2 = Smtlib2(State)(Typer_Types)
+  module Seq2NSeq = Seq2NSeq(State)(Typer_Types)
 
   (* setup *)
 
@@ -359,15 +590,17 @@ module Make
   let state : state State.key =
     State.create_key ~pipe "transform_state"
 
-  let init ?(compute_logic=false) ?lang st =
+  let init ?(compute_logic=false) ?(translate = false) ?lang st =
     let mk (type acc) (acc : acc) (transformer : acc transformer) =
       Transform { acc; transformer; }
     in
     let mk st lang =
       match (lang : language) with
+      | Smtlib2 _ when translate ->
+        st, mk (Seq2NSeq.init ()) (module Seq2NSeq)
       | Smtlib2 _ ->
-        let acc = Smt2.init ~compute_logic in
-        st, mk acc (module Smt2)
+        let acc = mk (Smt2.init ~compute_logic) (module Smt2) in
+        st,  acc
       | lang ->
         let st = State.error st unsupported_language lang in
         st, mk () (module Dummy)
