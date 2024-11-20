@@ -348,8 +348,32 @@ module Seq2NSeq
   let translate_binder (binder: Expr.binder): Expr.binder =
     binder
 
-  let translate_app (term: View.term) (tyl: View.ty list) (tl: View.term list) =
-    term, tyl, tl
+  let rec translate_ty (ty: Typer_Types.ty): Typer_Types.ty =
+    match ty.Expr.ty_descr with
+    | TyVar _ -> ty
+    | TyApp ({builtin = Builtin.Seq; _ }, [v]) ->
+      Ty.nseq v
+    | TyApp (ty_cst, tyl) ->
+      Ty.apply ty_cst (List.map translate_ty tyl)
+    | Arrow (tyl, ty) ->
+      Ty.arrow (List.map translate_ty tyl) (translate_ty ty)
+    | Pi (tyvl, ty) ->
+      Ty.pi tyvl (translate_ty ty)
+
+  let translate_term_cst =
+    let db = Hashtbl.create 17 in
+    fun (t: Expr.ty Expr.id) ->
+      match t.id_ty.ty_descr with
+      | TyApp ({builtin = Builtin.Seq; _ }, [ _ ]) ->
+        let id = Term.Const.hash t in
+        (match Hashtbl.find_opt db id with
+         | None ->
+           let newc = Term.Const.mk t.path (translate_ty t.id_ty) in
+           Hashtbl.add db id newc;
+           newc
+         | Some c ->
+           c)
+      | _ -> t
 
   let mk_concat =
     let rec aux prec l =
@@ -365,36 +389,45 @@ module Seq2NSeq
       | [] | [_] -> assert false
       | h :: t -> aux h t
 
-  let translate_term (term: View.term): View.term =
+  let rec translate_term (term: View.term): View.term =
     match term.term_descr with
+    | Var v ->
+      Term.of_var ((translate_term_cst v))
+
+    | Cst cst ->
+      Term.of_cst ((translate_term_cst cst))
+
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_unit; _}; _},
         [ _ ], [ v ]
       ) ->
-      Term.NSeq.const (Term.Int.mk "0") (Term.Int.mk "0") v
+      Term.NSeq.const (Term.Int.mk "0") (Term.Int.mk "0") (translate_term v)
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_len; _}; _},
         [ _ ], [ s ]
       ) ->
-      Term.Int.add (Term.NSeq.last s) (Term.Int.mk "1")
+      Term.Int.add (Term.NSeq.last (translate_term s)) (Term.Int.mk "1")
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_nth; _}; _},
         [ _ ], [ s; i ]
       ) ->
-      Term.NSeq.get s i
+      Term.NSeq.get (translate_term s) (translate_term i)
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_concat; _}; _},
         [ _ ], l
       ) ->
-      mk_concat l
+      mk_concat (List.map translate_term l)
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_update; _}; _},
         [ _ ], [ a; i; b ]
       ) ->
+      let a = translate_term a in
+      let i = translate_term i in
+      let b = translate_term b in
       let lsta = Term.NSeq.last a in
       let lstb = Term.NSeq.last b in
       let c1 = Term._or [
@@ -415,6 +448,9 @@ module Seq2NSeq
         {term_descr = Cst {builtin = Builtin.Seq_extract; _}; _},
         [ _ ], [ a; i; l ]
       ) ->
+      let a = translate_term a in
+      let i = translate_term i in
+      let l = translate_term l in
       let lsta = Term.NSeq.last a in
       let c1 = Term._or [
           Term.Int.lt i (Term.Int.mk "0");
@@ -428,23 +464,12 @@ module Seq2NSeq
            (Term.NSeq.slice a i lsta)
            (Term.NSeq.slice a i lstls))
 
-    | _ -> term
+    | App (app, tyl, l) ->
+      Term.apply app (List.map translate_ty tyl) (List.map translate_term l)
 
+    | Binder (_, _) -> assert false
 
-  let rec translate_ty (ty: Typer_Types.ty): Typer_Types.ty =
-    match ty.Expr.ty_descr with
-    | TyVar _ -> ty
-    | TyApp ({builtin = Builtin.Seq; _ }, [v]) ->
-      Ty.nseq v
-    | TyApp (ty_cst, tyl) ->
-      Ty.apply ty_cst (List.map translate_ty tyl)
-    | Arrow (tyl, ty) ->
-      Ty.arrow (List.map translate_ty tyl) (translate_ty ty)
-    | Pi (tyvl, ty) ->
-      Ty.pi tyvl (translate_ty ty)
-
-  let translate_term_cst_ty (t: Expr.ty Expr.id) =
-    Term.Const.mk t.path (translate_ty t.id_ty)
+    | Match _ -> assert false
 
   let translate_ty_def (ty_def: Typer_Types.ty_def): Typer_Types.ty_def =
     match ty_def with
@@ -452,7 +477,7 @@ module Seq2NSeq
     | Adt {ty; record; cases} ->
       let cases =
         Array.map (fun Expr.{cstr; tester; dstrs} ->
-            let dstrs = Array.map (Option.map translate_term_cst_ty) dstrs in
+            let dstrs = Array.map (Option.map translate_term_cst) dstrs in
             Expr.{cstr; tester; dstrs}
           ) cases
       in
@@ -462,7 +487,7 @@ module Seq2NSeq
     match d with
     | `Type_decl (_, None) -> d
     | `Type_decl (ty, Some ty_def) -> `Type_decl (ty, Some (translate_ty_def ty_def))
-    | `Term_decl tc -> `Term_decl (translate_term_cst_ty tc)
+    | `Term_decl tc -> `Term_decl (translate_term_cst tc)
 
   let translate_stmt (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
     match stmt.contents with
@@ -481,13 +506,13 @@ module Seq2NSeq
             | `Term_def (id, tcst, tyvl, params, body) ->
               `Term_def (
                 id, tcst, tyvl,
-                List.map translate_term_cst_ty params,
+                List.map translate_term_cst params,
                 translate_term body
               ) :: acc
             | `Instanceof (id, f, ty_args, vars, params, body) ->
               `Instanceof (
                 id, f, ty_args, vars,
-                List.map translate_term_cst_ty params,
+                List.map translate_term_cst params,
                 translate_term body
               ) :: acc
           ) [] defl |> List.rev
