@@ -171,7 +171,7 @@ let sanitize _id name =
     let basename' = Dolmen_std.Misc.string_unicode_map sanitize_aux basename in
     let indexes' =
       Dolmen_std.Misc.list_map_sharing
-      (Dolmen_std.Misc.string_unicode_map sanitize_aux) indexes
+        (Dolmen_std.Misc.string_unicode_map sanitize_aux) indexes
     in
     if basename == basename' && indexes = indexes'
     then name
@@ -288,7 +288,7 @@ module Make
     | { ns = Value Binary; name = Simple s; } -> bin fmt s
     | { ns = (Attr | Term); name = Simple s; } ->
       if (allow_keyword && Misc.lex_string Lexer.check_keyword s)
-         || Misc.lex_string Lexer.check_simple_symbol s then
+      || Misc.lex_string Lexer.check_simple_symbol s then
         Format.pp_print_string fmt s
       else if Misc.lex_string Lexer.check_quoted_symbol s then
         Format.fprintf fmt "|%s|" s
@@ -346,6 +346,8 @@ module Make
     | B.RoundingMode -> N.simple "RoundingMode"
     | B.String -> N.simple "String"
     | B.String_RegLan -> N.simple "RegLan"
+    | B.Seq -> N.simple "Seq"
+    | B.NSeq -> N.simple "NSeq"
     | _ ->
       (* Fallback: some builtins may be explicitly defined (e.g. unit) *)
       Env.Ty_cst.name env c
@@ -754,6 +756,24 @@ module Make
     | B.Re_option -> simple "re.opt"
     | B.Re_power n -> p Term (N.indexed "re.^" [int n])
     | B.Re_loop (n1, n2) -> p Term (N.indexed "re.loop" [int n1; int n2])
+
+    | B.Seq_empty -> simple "seq.empty"
+    | B.Seq_unit -> simple "seq.unit"
+    | B.Seq_len -> simple "seq.len"
+    | B.Seq_nth -> simple "seq.nth"
+    | B.Seq_update -> simple "seq.update"
+    | B.Seq_concat -> simple "seq.concat"
+    | B.Seq_extract -> simple "seq.extract"
+
+    | B.NSeq_first -> simple "nseq.first"
+    | B.NSeq_last -> simple "nseq.last"
+    | B.NSeq_get -> simple "nseq.get"
+    | B.NSeq_set -> simple "nseq.set"
+    | B.NSeq_const -> simple "nseq.const"
+    | B.NSeq_relocate -> simple "nseq.relocate"
+    | B.NSeq_concat -> simple "nseq.concat"
+    | B.NSeq_slice -> simple "nseq.slice"
+    | B.NSeq_update -> simple "nseq.update"
 
     (* generic case + fallback *)
     | B.Base | _ ->

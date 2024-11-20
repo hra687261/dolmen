@@ -339,11 +339,56 @@ module Seq2NSeq
   module Ty = Expr.Ty
   module Builtin = Dolmen_std.Builtin
 
+  let nseq_empty_cst =
+    let a = Ty.Var.mk "alpha" in
+    let a_ty = Ty.of_var a in
+    let a_ns_ty = Ty.nseq a_ty in
+    Expr.Term.Const.mk
+      (Dolmen_std.Path.local "nseq.empty")
+      (Ty.pi [ a ] a_ns_ty)
+
+  let nseq_empty_declaration:
+    Typer_Types.typechecked Typer_Types.stmt list =
+    (* let nseq_empty = Term.of_cst nseq_empty_cst in *)
+    let declaration = Typer_Types.{
+        id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "nseq.empty";
+        loc = Dolmen_std.Loc.no_loc;
+        contents = `Decls (false, [`Term_decl nseq_empty_cst]);
+        attrs = [];
+        implicit = false;
+      }
+    in
+    [declaration]
+
+  (*
+     let first_cond = Typer_Types.{
+        id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "";
+        loc = Dolmen_std.Loc.no_loc;
+        contents =
+          `Hyp (Term.eq (Term.NSeq.first nseq_empty) (Term.Int.mk "0"));
+        attrs = [];
+        implicit = false;
+      }
+     in
+     let last_cond = Typer_Types.{
+        id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "";
+        loc = Dolmen_std.Loc.no_loc;
+        contents =
+          `Hyp (Term.eq (Term.NSeq.last nseq_empty) (Term.Int.mk "-1"));
+        attrs = [];
+        implicit = false;
+      }
+     in
+     [declaration; first_cond; last_cond] *)
+
   type acc = {
-    new_stmts : Typer_Types.typechecked Typer_Types.stmt list;
+    stmts_before_first_decls_and_asserts :
+      Typer_Types.typechecked Typer_Types.stmt list;
+    other_stmts :
+      Typer_Types.typechecked Typer_Types.stmt list;
   }
 
-  let init () = {new_stmts = []}
+  let init () = {stmts_before_first_decls_and_asserts = []; other_stmts = []}
 
   let translate_binder (binder: Expr.binder): Expr.binder =
     binder
@@ -360,20 +405,28 @@ module Seq2NSeq
     | Pi (tyvl, ty) ->
       Ty.pi tyvl (translate_ty ty)
 
+  let cst_db = Hashtbl.create 17
+
   let translate_term_cst =
-    let db = Hashtbl.create 17 in
     fun (t: Expr.ty Expr.id) ->
-      match t.id_ty.ty_descr with
-      | TyApp ({builtin = Builtin.Seq; _ }, [ _ ]) ->
-        let id = Term.Const.hash t in
-        (match Hashtbl.find_opt db id with
-         | None ->
-           let newc = Term.Const.mk t.path (translate_ty t.id_ty) in
-           Hashtbl.add db id newc;
-           newc
-         | Some c ->
-           c)
-      | _ -> t
+    match t with
+    (* | { id_ty
+          { ty_descr = TyApp ({builtin = Builtin.Seq; _ }, [ _ ]); _ };
+        builtin = Builtin.Seq_empty; _
+       } -> nseq_empty_cst *)
+
+    | { id_ty = {
+        ty_descr = TyApp ({builtin = Builtin.Seq; _ }, [ _ ]); _
+      }; _ } ->
+      let id = Term.Const.hash t in
+      (match Hashtbl.find_opt cst_db id with
+       | None ->
+         let newc = Term.Const.mk t.path (translate_ty t.id_ty) in
+         Hashtbl.add cst_db id newc;
+         newc
+       | Some c ->
+         c)
+    | _ -> t
 
   let mk_concat =
     let rec aux prec l =
@@ -464,8 +517,14 @@ module Seq2NSeq
            (Term.NSeq.slice a i lsta)
            (Term.NSeq.slice a i lstls))
 
+    | App ({ term_descr = Cst {builtin = Builtin.Seq_empty; _ }; _ }, [ vty ], []) ->
+      Term.apply_cst nseq_empty_cst [ vty ] []
+
     | App (app, tyl, l) ->
-      Term.apply app (List.map translate_ty tyl) (List.map translate_term l)
+      Term.apply
+        (translate_term app)
+        (List.map translate_ty tyl)
+        (List.map translate_term l)
 
     | Binder (_, _) -> assert false
 
@@ -493,9 +552,9 @@ module Seq2NSeq
     match stmt.contents with
     | `Decls (b, decl) -> (
         st,
-        { new_stmts = {
+        { acc with other_stmts = {
               stmt with
-              contents = `Decls (b, List.map translate_decl decl)} :: acc.new_stmts },
+              contents = `Decls (b, List.map translate_decl decl)} :: acc.other_stmts },
         res
       )
     | `Defs (b, defl) ->
@@ -518,51 +577,65 @@ module Seq2NSeq
           ) [] defl |> List.rev
       in
       (st,
-       { new_stmts = {
+       { acc with other_stmts = {
              stmt with
-             contents = `Defs (b, defl)} :: acc.new_stmts },
+             contents = `Defs (b, defl)} :: acc.other_stmts },
        res)
 
     | `Hyp t -> (
         st,
-        { new_stmts = {
+        { acc with other_stmts = {
               stmt with
-              contents = `Hyp (translate_term t)} :: acc.new_stmts },
+              contents = `Hyp (translate_term t)} :: acc.other_stmts },
         res
       )
     | `Goal t -> (
         st,
-        { new_stmts = {
+        { acc with other_stmts = {
               stmt with
-              contents = `Goal (translate_term t)} :: acc.new_stmts },
+              contents = `Goal (translate_term t)} :: acc.other_stmts },
         res
       )
     | `Clause l -> (
         st,
-        { new_stmts = {
+        { acc with other_stmts = {
               stmt with
-              contents = `Clause (List.map translate_term l)} :: acc.new_stmts },
+              contents = `Clause (List.map translate_term l)} :: acc.other_stmts },
         res
       )
     | `Solve (hyps, goals) -> (
         st,
-        { new_stmts = {
+        { acc with other_stmts = {
               stmt with
               contents = `Solve (
                   List.map translate_term hyps,
                   List.map translate_term goals
                 )
-            } :: acc.new_stmts },
+            } :: acc.other_stmts },
         res
       )
     | `Get_value l -> (
         st,
-        { new_stmts = {stmt with contents = `Get_value (List.map translate_term l)} :: acc.new_stmts },
+        { acc with other_stmts =
+                     {stmt with
+                      contents = `Get_value (List.map translate_term l)} :: acc.other_stmts },
         res
       )
     | `End ->
-      st, { new_stmts = [] }, List.rev_append acc.new_stmts res
-    | _  -> (st, { new_stmts = stmt :: acc.new_stmts }, res)
+      st, { stmts_before_first_decls_and_asserts = []; other_stmts = [] },
+      List.rev_append acc.stmts_before_first_decls_and_asserts @@
+      nseq_empty_declaration @
+      (List.rev_append acc.other_stmts res)
+
+    | _ when acc.other_stmts = [] ->
+      (st,
+       { acc with
+         stmts_before_first_decls_and_asserts =
+           stmt :: acc.stmts_before_first_decls_and_asserts },
+       res)
+
+    | _ ->
+      (st, { acc with other_stmts = stmt :: acc.other_stmts }, res)
 
   let transform st acc (l : Typer_Types.typechecked Typer_Types.stmt list) =
     List.fold_left translate_stmt (st, acc, []) l
