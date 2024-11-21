@@ -302,6 +302,8 @@ module Smtlib2
   (* ************ *)
 
   let map_decl = function
+    | `Type_param_decl v ->
+      Either.Left (`Type_param_decl v)
     | `Type_decl (c, None) ->
       Either.Left (`Type_decl c)
     | `Term_decl c ->
@@ -320,6 +322,7 @@ module Smtlib2
       end
 
   let register_simple_decl env = function
+    | `Type_param_decl v -> Env.Ty_var.bind env v
     | `Type_decl c -> Env.Ty_cst.bind env c
     | `Term_decl c -> Env.Term_cst.bind env c
 
@@ -333,6 +336,7 @@ module Smtlib2
       ) env cases
 
   let print_simple_decl (st, acc) = function
+    | `Type_param_decl v -> pp_stmt st acc P.declare_sort_parameter v
     | `Type_decl c -> pp_stmt st acc P.declare_sort c
     | `Term_decl c -> pp_stmt st acc P.declare_fun c
 

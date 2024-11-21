@@ -74,6 +74,9 @@ module type Smtlib2 = sig
   (** [push fmt n] prints a statement that pushes `n` levels.
       @raise Cannot_print if the provided level is non-positive *)
 
+  val declare_sort_parameter : env -> Format.formatter -> ty_var -> unit
+  (** Declare a polymorphic sort variable. *)
+
   val declare_sort : env -> Format.formatter -> ty_cst -> unit
   (** Declare a sort, i.e. a type constant. *)
 

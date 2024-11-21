@@ -236,6 +236,7 @@ module Smtlib2
         Option.map (fun scan_acc ->
             List.fold_left (fun scan_acc decl ->
                 match decl with
+                | `Type_param_decl _ -> S.add_free_sort scan_acc
                 | `Term_decl c -> S.scan_term_decl ~in_adt:false scan_acc c
                 | `Type_decl (_, ty_def) ->
                   begin match (ty_def : Dolmen.Std.Expr.ty_def option) with
@@ -339,18 +340,28 @@ module Seq2NSeq
   module Ty = Expr.Ty
   module Builtin = Dolmen_std.Builtin
 
+  let a_tyv = Ty.Var.mk "A"
+  let a_ty = Ty.of_var a_tyv
+  let a_ns_ty = Ty.nseq a_ty
+
   let nseq_empty_cst =
-    let a = Ty.Var.mk "alpha" in
-    let a_ty = Ty.of_var a in
-    let a_ns_ty = Ty.nseq a_ty in
-    Expr.Term.Const.mk
-      (Dolmen_std.Path.local "nseq.empty")
-      (Ty.pi [ a ] a_ns_ty)
+    Expr.Term.Const.mk (Dolmen_std.Path.local "nseq.empty") (a_ns_ty)
+
+  let nseq_empty_cst_poly =
+    Expr.Term.Const.mk (Dolmen_std.Path.local "nseq.empty") (Ty.pi [ a_tyv ] a_ns_ty)
 
   let nseq_empty_declaration:
     Typer_Types.typechecked Typer_Types.stmt list =
     (* let nseq_empty = Term.of_cst nseq_empty_cst in *)
-    let declaration = Typer_Types.{
+    let a_ty_decl = Typer_Types.{
+        id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "nseq.empty";
+        loc = Dolmen_std.Loc.no_loc;
+        contents = `Decls (false, [`Type_param_decl a_tyv]);
+        attrs = [];
+        implicit = false;
+      }
+    in
+    let nseq_empty_decl = Typer_Types.{
         id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "nseq.empty";
         loc = Dolmen_std.Loc.no_loc;
         contents = `Decls (false, [`Term_decl nseq_empty_cst]);
@@ -358,7 +369,7 @@ module Seq2NSeq
         implicit = false;
       }
     in
-    [declaration]
+    [ a_ty_decl; nseq_empty_decl ]
 
   (*
      let first_cond = Typer_Types.{
@@ -518,7 +529,7 @@ module Seq2NSeq
            (Term.NSeq.slice a i lstls))
 
     | App ({ term_descr = Cst {builtin = Builtin.Seq_empty; _ }; _ }, [ vty ], []) ->
-      Term.apply_cst nseq_empty_cst [ vty ] []
+      Term.apply_cst nseq_empty_cst_poly [ vty ] []
 
     | App (app, tyl, l) ->
       Term.apply
@@ -544,6 +555,7 @@ module Seq2NSeq
 
   let translate_decl (d: Typer_Types.decl): Typer_Types.decl =
     match d with
+    | `Type_param_decl _
     | `Type_decl (_, None) -> d
     | `Type_decl (ty, Some ty_def) -> `Type_decl (ty, Some (translate_ty_def ty_def))
     | `Term_decl tc -> `Term_decl (translate_term_cst tc)

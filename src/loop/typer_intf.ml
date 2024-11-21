@@ -24,6 +24,7 @@ module type Types = sig
   }
 
   type decl = [
+    | `Type_param_decl of ty_var
     | `Type_decl of ty_cst * ty_def option
     | `Term_decl of term_cst
   ]
@@ -128,6 +129,7 @@ module type Typer = sig
   ]
 
   type decl = [
+    | `Type_param_decl of ty_var
     | `Type_decl of ty_cst * ty_def option
     | `Term_decl of term_cst
   ]

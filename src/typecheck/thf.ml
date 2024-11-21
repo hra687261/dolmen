@@ -275,6 +275,7 @@ module Make
   (** The type of kinds of variables *)
 
   type decl = [
+    | `Type_param_decl of Ty.Var.t
     | `Type_decl of Ty.Const.t * Ty.def option
     | `Term_decl of T.Const.t
   ]
@@ -2341,6 +2342,7 @@ module Make
 
   let define_decl env (_, cst) t =
     match cst, (t : Stmt.decl) with
+    | `Type_param_decl _, _ -> assert false
     (* Term decl *)
     | (`Term_decl _) as res, Abstract _ -> res
     (* Abstract type decl *)
@@ -2393,6 +2395,7 @@ module Make
 
   let record_decl env (id, tdecl) (t : Stmt.decl) =
     match tdecl with
+    | `Type_param_decl _ -> assert false
     | `Type_decl c -> decl_ty_const env (Decl t) id c (Declared (env.file, t))
     | `Term_decl f -> decl_term_const env (Decl t) id f (Declared (env.file, t))
 

@@ -1862,6 +1862,7 @@ module Typer(State : State.S) = struct
   (* ************************************************************************ *)
 
   type decl = [
+    | `Type_param_decl of Dolmen_std.Expr.Ty.Var.t
     | `Term_decl of Dolmen_std.Expr.ty Dolmen_std.Expr.id
     | `Type_decl of
         Dolmen_std.Expr.type_fun Dolmen_std.Expr.id *
@@ -1907,6 +1908,7 @@ module Typer(State : State.S) = struct
     | Auto -> true
 
   let check_decl st env d = function
+    | `Type_param_decl _ -> ()
     | `Type_decl (_, ty_def) ->
       begin match (ty_def : Dolmen.Std.Expr.Ty.def option) with
         | None | Some Abstract ->
@@ -2059,6 +2061,7 @@ module Types(Expr : Expr_intf.S) = struct
   ]
 
   type decl = [
+    | `Type_param_decl of Expr.ty_var
     | `Type_decl of Expr.ty_cst * Expr.ty_def option
     | `Term_decl of Expr.term_cst
   ]
@@ -2193,8 +2196,10 @@ module Make
       Format.fprintf fmt " =@ %a" Print.ty_def ty_def
 
   let print_decl fmt = function
+    | `Type_param_decl v ->
+      Format.fprintf fmt "@[<hov 2>type-param-decl:@ %a@]" Print.ty_var v
     | `Type_decl (c, ty_def) ->
-      Format.fprintf fmt "@[<hov 2>type-def:@ %a%a@]"
+      Format.fprintf fmt "@[<hov 2>type-decl:@ %a%a@]"
         Print.ty_cst c print_ty_def ty_def
     | `Term_decl c ->
       Format.fprintf fmt "@[<hov 2>term-decl:@ %a@]" Print.term_cst c

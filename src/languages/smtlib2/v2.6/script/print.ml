@@ -1011,6 +1011,10 @@ module Make
     then raise (Cannot_print "push with non-positive level")
     else Format.fprintf fmt "@[<h>(push %d)@]" n
 
+  let declare_sort_parameter env fmt v =
+    let name = Env.Ty_var.name env v in
+    Format.fprintf fmt "@[<h>(declare-sort-parameter %a)@]" (symbol env) name
+
   let declare_sort env fmt c =
     let n = V.Ty.Cst.arity c in
     let name = Env.Ty_cst.name env c in

@@ -3949,7 +3949,12 @@ module Term = struct
       let pat = Ty.nseq (Ty.of_var elem) in
       (fun t ->
          match Ty.pmatch Subst.empty pat (ty t) with
-         | exception Ty.Impossible_matching _ -> raise (Wrong_type (t, pat))
+         | exception Ty.Impossible_matching _ ->
+           Format.fprintf Format.err_formatter "%a (%a, %a)@."
+             print t
+             Ty.print pat
+             Ty.print (ty t);
+           raise (Wrong_type (t, pat))
          | s -> begin match Subst.Var.get elem s with
              | res -> res
              | exception Not_found -> assert false (* internal error *)
