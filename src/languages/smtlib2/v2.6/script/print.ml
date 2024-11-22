@@ -1044,11 +1044,11 @@ module Make
     | Signature ([], [], c_ty) ->
       Format.fprintf fmt "@[<hov 2>(declare-const %a@ %a)@]"
         (symbol env) name (ty env) c_ty
-    | Signature ([], params, ret) ->
+    | Signature (_, params, ret) ->
+      (* TODO: in the polymorphic case, check that the type variables were
+         declared *)
       Format.fprintf fmt "@[<hov 2>(declare-fun %a@ (%a)@ %a)@]"
         (symbol env) name (list ty env) params (ty env) ret
-    | Signature (_ :: _, _, _) ->
-      raise Polymorphic_function_declaration
 
   let define_sort env fmt (c, params, body) =
     let env = List.fold_left Env.Ty_var.bind env params in

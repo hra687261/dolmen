@@ -344,8 +344,8 @@ module Seq2NSeq
   let a_ty = Ty.of_var a_tyv
   let a_ns_ty = Ty.nseq a_ty
 
-  let nseq_empty_cst =
-    Expr.Term.Const.mk (Dolmen_std.Path.local "nseq.empty") (a_ns_ty)
+  (* let nseq_empty_cst =
+     Expr.Term.Const.mk (Dolmen_std.Path.local "nseq.empty") (a_ns_ty) *)
 
   let nseq_empty_cst_poly =
     Expr.Term.Const.mk (Dolmen_std.Path.local "nseq.empty") (Ty.pi [ a_tyv ] a_ns_ty)
@@ -364,7 +364,7 @@ module Seq2NSeq
     let nseq_empty_decl = Typer_Types.{
         id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "nseq.empty";
         loc = Dolmen_std.Loc.no_loc;
-        contents = `Decls (false, [`Term_decl nseq_empty_cst]);
+        contents = `Decls (false, [`Term_decl nseq_empty_cst_poly]);
         attrs = [];
         implicit = false;
       }
