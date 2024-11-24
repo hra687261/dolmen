@@ -480,6 +480,9 @@ module Seq2NSeq
     | Cst cst ->
       Term.of_cst ((translate_term_cst cst))
 
+    | App ({ term_descr = Cst {builtin = Builtin.Seq_empty; _ }; _ }, [ vty ], []) ->
+      Term.apply_cst (nseq_empty_cst_poly mono) [ vty ] []
+
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_unit; _}; _},
         [ _ ], [ v ]
@@ -503,6 +506,22 @@ module Seq2NSeq
         [ _ ], l
       ) ->
       mk_concat (List.map translate_term l)
+
+    | App (
+        {term_descr = Cst {builtin = Builtin.Seq_update; _}; _},
+        [ _ ],
+        [ a; i; {
+              term_descr = App (
+                  {term_descr = Cst {builtin = Builtin.Seq_unit; _}; _},
+                  [ _ ],
+                  [ v ]); _
+            }
+        ]
+      ) ->
+      let a = translate_term a in
+      let i = translate_term i in
+      let v = translate_term v in
+      Term.NSeq.set a i v
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_update; _}; _},
@@ -546,9 +565,6 @@ module Seq2NSeq
         (Term.ite c2
            (Term.NSeq.slice a i lsta)
            (Term.NSeq.slice a i lstls))
-
-    | App ({ term_descr = Cst {builtin = Builtin.Seq_empty; _ }; _ }, [ vty ], []) ->
-      Term.apply_cst (nseq_empty_cst_poly mono) [ vty ] []
 
     | App (app, tyl, l) ->
       Term.apply
