@@ -537,9 +537,44 @@ module Seq2NSeq
         (List.map translate_ty tyl)
         (List.map translate_term l)
 
-    | Binder (_, _) -> assert false
+    | Binder (Let_seq bindings, term) ->
+    let bindings =
+      List.map (fun (v,t) ->
+        (translate_term_cst v, translate_term t)
+      ) bindings
+    in
+    Term.letin bindings (translate_term term)
 
-    | Match _ -> assert false
+    | Binder (Let_par bindings, term) ->
+      let bindings =
+        List.map (fun (v,t) ->
+          (translate_term_cst v, translate_term t)
+        ) bindings
+      in
+      Term.letand bindings (translate_term term)
+
+    | Binder (Lambda (tyvl, termvl), term) ->
+      Term.lam
+        (tyvl, List.map translate_term_cst termvl)
+        (translate_term term)
+
+    | Binder (Exists (tyvl, termvl), term) ->
+      Term.ex
+        (tyvl, List.map translate_term_cst termvl)
+        (translate_term term)
+
+    | Binder (Forall (tyvl, termvl), term) ->
+      Term.all
+        (tyvl, List.map translate_term_cst termvl)
+        (translate_term term)
+
+    | Match (term, patl) ->
+      Term.pattern_match
+        (translate_term term)
+        (List.map (fun (p, t) ->
+          (* Translating patterns should be unnecessary *)
+          (translate_term p, translate_term t)
+        ) patl)
 
   let translate_ty_def (ty_def: Typer_Types.ty_def): Typer_Types.ty_def =
     match ty_def with
