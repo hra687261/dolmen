@@ -385,7 +385,7 @@ let mk_run_state
     abort_on_bug
     time_limit size_limit
     response_file output_file
-    flow_check compute_logic translate
+    flow_check compute_logic seq2nseq seq2nseq_mono
     header_check header_licenses header_lang_version
     smtlib2_forced_logic smtlib2_exts
     type_check extension_builtins
@@ -430,7 +430,9 @@ let mk_run_state
   (* ~check_model_mode *)
   |> Loop.Flow.init ~flow_check
   |> Loop.Export.init ?output_file
-  |> Loop.Transform.init ~compute_logic ~translate
+  |> Loop.Transform.init ~compute_logic
+    ~translate:(seq2nseq || seq2nseq_mono)
+    ~monomorphize:seq2nseq_mono
   |> Loop.Header.init
     ~header_check
     ~header_licenses
@@ -643,9 +645,13 @@ let state =
                used during export to the smtlib2 format." in
     Arg.(value & opt bool false & info ["compute-logic"] ~doc) (* TODO: new doc section *)
   in
-  let translate =
+  let seq2nseq =
     let doc = "Translate from the Seq theory to the NSeq theory" in
     Arg.(value & flag & info ["seq2nseq"] ~doc)
+  in
+  let seq2nseq_mono =
+    let doc = "Translate from the Seq theory to the NSeq theory" in
+    Arg.(value & flag & info ["seq2nseq-mono"] ~doc)
   in
   let header_check =
     let doc = "If true, then the presence of headers will be checked in the
@@ -751,7 +757,7 @@ let state =
         abort_on_bug $
         time $ size $
         response_file $ output_file $
-        flow_check $ compute_logic $ translate $
+        flow_check $ compute_logic $ seq2nseq $ seq2nseq_mono $
         header_check $ header_licenses $ header_lang_version $
         force_smtlib2_logic $ smtlib2_extensions $
         typing $ typing_ext $

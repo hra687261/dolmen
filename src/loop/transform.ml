@@ -344,32 +344,49 @@ module Seq2NSeq
   let a_ty = Ty.of_var a_tyv
   let a_ns_ty = Ty.nseq a_ty
 
+  let element_ty_cst = Ty.Const.mk (Dolmen_std.Path.global "Element") 0
+  let element_ty = Ty.apply element_ty_cst []
+  let element_ns_ty = Ty.nseq element_ty
+
   (* let nseq_empty_cst =
      Expr.Term.Const.mk (Dolmen_std.Path.local "nseq.empty") (a_ns_ty) *)
 
-  let nseq_empty_cst_poly =
-    Expr.Term.Const.mk (Dolmen_std.Path.local "nseq.empty") (Ty.pi [ a_tyv ] a_ns_ty)
+  let nseq_empty_cst_poly mono =
+    Expr.Term.Const.mk (Dolmen_std.Path.local "nseq.empty")
+      (if mono then element_ns_ty else Ty.pi [ a_tyv ] a_ns_ty)
 
-  let nseq_empty_declaration:
+  let nseq_empty_declaration mono:
     Typer_Types.typechecked Typer_Types.stmt list =
-    (* let nseq_empty = Term.of_cst nseq_empty_cst in *)
-    let a_ty_decl = Typer_Types.{
-        id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "nseq.empty";
-        loc = Dolmen_std.Loc.no_loc;
-        contents = `Decls (false, [`Type_param_decl a_tyv]);
-        attrs = [];
-        implicit = false;
-      }
-    in
     let nseq_empty_decl = Typer_Types.{
         id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "nseq.empty";
         loc = Dolmen_std.Loc.no_loc;
-        contents = `Decls (false, [`Term_decl nseq_empty_cst_poly]);
+        contents = `Decls (false, [`Term_decl (nseq_empty_cst_poly mono)]);
         attrs = [];
         implicit = false;
       }
     in
-    [ a_ty_decl; nseq_empty_decl ]
+    if mono then (
+      let element_ty_decl = Typer_Types.{
+          id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "";
+          loc = Dolmen_std.Loc.no_loc;
+          contents = `Decls (false, [`Type_decl (element_ty_cst, None)]);
+          attrs = [];
+          implicit = false;
+        }
+      in
+      (* unnecessary for qf benchs *)
+      ignore (element_ty_decl, nseq_empty_decl);
+      []
+    ) else
+      let a_ty_decl = Typer_Types.{
+          id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "";
+          loc = Dolmen_std.Loc.no_loc;
+          contents = `Decls (false, [`Type_param_decl a_tyv]);
+          attrs = [];
+          implicit = false;
+        }
+      in
+      [ a_ty_decl; nseq_empty_decl ]
 
   (*
      let first_cond = Typer_Types.{
@@ -393,13 +410,14 @@ module Seq2NSeq
      [declaration; first_cond; last_cond] *)
 
   type acc = {
+    monomorphize : bool;
     stmts_before_first_decls_and_asserts :
       Typer_Types.typechecked Typer_Types.stmt list;
     other_stmts :
       Typer_Types.typechecked Typer_Types.stmt list;
   }
 
-  let init () = {stmts_before_first_decls_and_asserts = []; other_stmts = []}
+  let init ~monomorphize () = {monomorphize; stmts_before_first_decls_and_asserts = []; other_stmts = []}
 
   let translate_binder (binder: Expr.binder): Expr.binder =
     binder
@@ -453,7 +471,8 @@ module Seq2NSeq
       | [] | [_] -> assert false
       | h :: t -> aux h t
 
-  let rec translate_term (term: View.term): View.term =
+  let rec translate_term mono (term: View.term): View.term =
+    let translate_term = translate_term mono in
     match term.term_descr with
     | Var v ->
       Term.of_var ((translate_term_cst v))
@@ -529,7 +548,7 @@ module Seq2NSeq
            (Term.NSeq.slice a i lstls))
 
     | App ({ term_descr = Cst {builtin = Builtin.Seq_empty; _ }; _ }, [ vty ], []) ->
-      Term.apply_cst nseq_empty_cst_poly [ vty ] []
+      Term.apply_cst (nseq_empty_cst_poly mono) [ vty ] []
 
     | App (app, tyl, l) ->
       Term.apply
@@ -538,18 +557,18 @@ module Seq2NSeq
         (List.map translate_term l)
 
     | Binder (Let_seq bindings, term) ->
-    let bindings =
-      List.map (fun (v,t) ->
-        (translate_term_cst v, translate_term t)
-      ) bindings
-    in
-    Term.letin bindings (translate_term term)
+      let bindings =
+        List.map (fun (v,t) ->
+            (translate_term_cst v, translate_term t)
+          ) bindings
+      in
+      Term.letin bindings (translate_term term)
 
     | Binder (Let_par bindings, term) ->
       let bindings =
         List.map (fun (v,t) ->
-          (translate_term_cst v, translate_term t)
-        ) bindings
+            (translate_term_cst v, translate_term t)
+          ) bindings
       in
       Term.letand bindings (translate_term term)
 
@@ -572,9 +591,9 @@ module Seq2NSeq
       Term.pattern_match
         (translate_term term)
         (List.map (fun (p, t) ->
-          (* Translating patterns should be unnecessary *)
-          (translate_term p, translate_term t)
-        ) patl)
+             (* Translating patterns should be unnecessary *)
+             (translate_term p, translate_term t)
+           ) patl)
 
   let translate_ty_def (ty_def: Typer_Types.ty_def): Typer_Types.ty_def =
     match ty_def with
@@ -596,6 +615,7 @@ module Seq2NSeq
     | `Term_decl tc -> `Term_decl (translate_term_cst tc)
 
   let translate_stmt (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
+    let translate_term = translate_term acc.monomorphize in
     match stmt.contents with
     | `Decls (b, decl) -> (
         st,
@@ -669,9 +689,13 @@ module Seq2NSeq
         res
       )
     | `End ->
-      st, { stmts_before_first_decls_and_asserts = []; other_stmts = [] },
+      st, {
+        acc with
+        stmts_before_first_decls_and_asserts = [];
+        other_stmts = []
+      },
       List.rev_append acc.stmts_before_first_decls_and_asserts @@
-      nseq_empty_declaration @
+      nseq_empty_declaration acc.monomorphize @
       (List.rev_append acc.other_stmts res)
 
     | _ when acc.other_stmts = [] ->
@@ -735,14 +759,14 @@ module Make
   let state : state State.key =
     State.create_key ~pipe "transform_state"
 
-  let init ?(compute_logic=false) ?(translate = false) ?lang st =
+  let init ~compute_logic ~translate ~monomorphize ?lang st =
     let mk (type acc) (acc : acc) (transformer : acc transformer) =
       Transform { acc; transformer; }
     in
     let mk st lang =
       match (lang : language) with
       | Smtlib2 _ when translate ->
-        st, mk (Seq2NSeq.init ()) (module Seq2NSeq)
+        st, mk (Seq2NSeq.init ~monomorphize ()) (module Seq2NSeq)
       | Smtlib2 _ ->
         let acc = mk (Smt2.init ~compute_logic) (module Smt2) in
         st,  acc
