@@ -388,6 +388,44 @@ module Seq2NSeq
       in
       [ a_ty_decl; nseq_empty_decl ]
 
+  let nseq_update_def_cst =
+    Expr.Term.Const.mk
+      (Dolmen_std.Path.local "def.nseq.update")
+      (Ty.arrow [ element_ns_ty; Ty.int; element_ty ] element_ns_ty)
+
+  let nseq_update_def: Typer_Types.typechecked Typer_Types.stmt =
+    let id =
+      Dolmen_std.Id.mk Dolmen_std.Namespace.Term "def.nseq.update"
+    in
+    let svar = Term.Var.mk "s" element_ns_ty in
+    let ivar = Term.Var.mk "i" Ty.int in
+    let vvar = Term.Var.mk "v" element_ty in
+    let tvl = [ svar; ivar; vvar ] in
+    let t =
+      let s = Term.of_var svar in
+      let i = Term.of_var ivar in
+      let v = Term.of_var vvar in
+      let sfst = Term.NSeq.first s in
+      let slst = Term.NSeq.last s in
+      let disj = Term._or [ Term.Int.lt i sfst; Term.Int.gt i slst ] in
+      let one = Term.Int.mk "1" in
+      let cons =
+        Term.NSeq.concat
+          (Term.NSeq.slice s sfst (Term.Int.sub i one))
+          (Term.NSeq.concat
+             (Term.NSeq.const one one v)
+             (Term.NSeq.slice s (Term.Int.add i one) slst))
+      in
+      Term.ite disj s cons
+    in
+    Typer_Types.{
+      id;
+      loc = Dolmen_std.Loc.no_loc;
+      contents = `Defs (false, [`Term_def (id, nseq_update_def_cst, [], tvl, t)]);
+      attrs = [];
+      implicit = false;
+    }
+
   (*
      let first_cond = Typer_Types.{
         id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "";
@@ -508,8 +546,8 @@ module Seq2NSeq
       mk_concat (List.map translate_term l)
 
     | App (
-        {term_descr = Cst {builtin = Builtin.Seq_update; _}; _},
-        [ _ ],
+        { term_descr = Cst { path = Absolute { name; _}; _}; _} ,
+        [ ],
         [ a; i; {
               term_descr = App (
                   {term_descr = Cst {builtin = Builtin.Seq_unit; _}; _},
@@ -517,11 +555,12 @@ module Seq2NSeq
                   [ v ]); _
             }
         ]
-      ) ->
+      ) when String.equal name "def.seq.update" ->
       let a = translate_term a in
       let i = translate_term i in
       let v = translate_term v in
-      Term.NSeq.set a i v
+      Term.apply_cst nseq_update_def_cst [ ]
+        [ translate_term a; translate_term i; translate_term v ]
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_update; _}; _},
@@ -640,6 +679,12 @@ module Seq2NSeq
               contents = `Decls (b, List.map translate_decl decl)} :: acc.other_stmts },
         res
       )
+
+    | `Defs (false, [`Term_def (id, _, _, _, _)])
+      when Dolmen_std.Id.equal id
+          (Dolmen_std.Id.mk Dolmen_std.Namespace.Term "def.seq.update") ->
+      st, { acc with other_stmts = nseq_update_def :: acc.other_stmts }, res
+
     | `Defs (b, defl) ->
       let defl =
         List.fold_left (fun acc def ->
@@ -647,13 +692,18 @@ module Seq2NSeq
             | `Type_alias _ -> def :: acc
             | `Term_def (id, tcst, tyvl, params, body) ->
               `Term_def (
-                id, tcst, tyvl,
+                id,
+                translate_term_cst tcst,
+                tyvl,
                 List.map translate_term_cst params,
                 translate_term body
               ) :: acc
             | `Instanceof (id, f, ty_args, vars, params, body) ->
               `Instanceof (
-                id, f, ty_args, vars,
+                id,
+                translate_term_cst f,
+                List.map translate_ty ty_args,
+                vars,
                 List.map translate_term_cst params,
                 translate_term body
               ) :: acc
