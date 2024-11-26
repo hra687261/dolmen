@@ -463,8 +463,11 @@ module Seq2NSeq
   let rec translate_ty (ty: Typer_Types.ty): Typer_Types.ty =
     match ty.Expr.ty_descr with
     | TyVar _ -> ty
-    | TyApp ({builtin = Builtin.Seq; _ }, [v]) ->
-      Ty.nseq v
+    | TyApp ({ path = Absolute { name; _}; _ }, [])
+      when String.equal name "Element" ->
+      element_ty
+    | TyApp ({builtin = Builtin.Seq; _ }, [ vty ]) ->
+      Ty.nseq (translate_ty vty)
     | TyApp (ty_cst, tyl) ->
       Ty.apply ty_cst (List.map translate_ty tyl)
     | Arrow (tyl, ty) ->
@@ -474,14 +477,8 @@ module Seq2NSeq
 
   let cst_db = Hashtbl.create 17
 
-  let translate_term_cst =
-    fun (t: Expr.ty Expr.id) ->
+  let translate_term_cst (t: Expr.ty Expr.id) =
     match t with
-    (* | { id_ty
-          { ty_descr = TyApp ({builtin = Builtin.Seq; _ }, [ _ ]); _ };
-        builtin = Builtin.Seq_empty; _
-       } -> nseq_empty_cst *)
-
     | { id_ty = {
         ty_descr = TyApp ({builtin = Builtin.Seq; _ }, [ _ ]); _
       }; _ } ->
@@ -491,8 +488,19 @@ module Seq2NSeq
          let newc = Term.Const.mk t.path (translate_ty t.id_ty) in
          Hashtbl.add cst_db id newc;
          newc
-       | Some c ->
-         c)
+       | Some c -> c)
+
+    | { id_ty =
+          { ty_descr = TyApp ({ path = Absolute { name; _}; _ }, []); _ }; _
+      } when String.equal name "Element" ->
+      let id = Term.Const.hash t in
+      (match Hashtbl.find_opt cst_db id with
+       | None ->
+         let newc = Term.Const.mk t.path element_ty in
+         Hashtbl.add cst_db id newc;
+         newc
+       | Some c -> c)
+
     | _ -> t
 
   let mk_concat =
@@ -519,7 +527,7 @@ module Seq2NSeq
       Term.of_cst ((translate_term_cst cst))
 
     | App ({ term_descr = Cst {builtin = Builtin.Seq_empty; _ }; _ }, [ vty ], []) ->
-      Term.apply_cst (nseq_empty_cst_poly mono) [ vty ] []
+      Term.apply_cst (nseq_empty_cst_poly mono) [ translate_ty vty ] []
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_unit; _}; _},
@@ -559,8 +567,7 @@ module Seq2NSeq
       let a = translate_term a in
       let i = translate_term i in
       let v = translate_term v in
-      Term.apply_cst nseq_update_def_cst [ ]
-        [ translate_term a; translate_term i; translate_term v ]
+      Term.apply_cst nseq_update_def_cst [ ] [ a; i; v ]
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_update; _}; _},
@@ -672,6 +679,17 @@ module Seq2NSeq
   let translate_stmt (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
     let translate_term = translate_term acc.monomorphize in
     match stmt.contents with
+
+    | `Decls (false, [`Type_decl ( { path = Absolute { name; _ } ; _ }, None)])
+      when String.equal name "Element" ->
+      st, { acc with other_stmts = Typer_Types.{
+          id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term "Element";
+          loc = Dolmen_std.Loc.no_loc;
+          contents = `Decls (false, [`Type_decl (element_ty_cst, None)]);
+          attrs = [];
+          implicit = false;
+        } :: acc.other_stmts }, res
+
     | `Decls (b, decl) -> (
         st,
         { acc with other_stmts = {
