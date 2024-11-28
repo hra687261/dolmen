@@ -567,7 +567,7 @@ module Seq2NSeq
       let a = translate_term a in
       let i = translate_term i in
       let v = translate_term v in
-      Term.apply_cst nseq_update_def_cst [ ] [ a; i; v ]
+      Term.NSeq.set a i v
 
     | App (
         {term_descr = Cst {builtin = Builtin.Seq_update; _}; _},
@@ -701,7 +701,8 @@ module Seq2NSeq
     | `Defs (false, [`Term_def (id, _, _, _, _)])
       when Dolmen_std.Id.equal id
           (Dolmen_std.Id.mk Dolmen_std.Namespace.Term "def.seq.update") ->
-      st, { acc with other_stmts = nseq_update_def :: acc.other_stmts }, res
+      (* simply remove definition, since we use nseq.set *)
+      st, { acc with other_stmts = acc.other_stmts }, res
 
     | `Defs (b, defl) ->
       let defl =
