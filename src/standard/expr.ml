@@ -2896,6 +2896,13 @@ module Term = struct
         mk' ~name:"nseq.last" ~builtin:Builtin.NSeq_last "nseq.last"
           [ a ] [ a_ns_ty ] Ty.int
 
+      let length =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.length" ~builtin:Builtin.NSeq_length "nseq.length"
+          [ a ] [ a_ns_ty ] Ty.int
+
       let get =
         let a = Ty.Var.mk "alpha" in
         let a_ty = Ty.of_var a in
@@ -2931,19 +2938,26 @@ module Term = struct
         mk' ~name:"nseq.concat" ~builtin:Builtin.NSeq_concat "nseq.concat"
           [ a ] [ a_ns_ty; a_ns_ty ] a_ns_ty
 
-      let slice  =
+      let slice =
         let a = Ty.Var.mk "alpha" in
         let a_ty = Ty.of_var a in
         let a_ns_ty = Ty.nseq a_ty in
         mk' ~name:"nseq.slice" ~builtin:Builtin.NSeq_slice "nseq.slice"
           [ a ] [ a_ns_ty; Ty.int; Ty.int ] a_ns_ty
 
-      let update  =
+      let update =
         let a = Ty.Var.mk "alpha" in
         let a_ty = Ty.of_var a in
         let a_ns_ty = Ty.nseq a_ty in
         mk' ~name:"nseq.update" ~builtin:Builtin.NSeq_update "nseq.update"
           [ a ] [ a_ns_ty; a_ns_ty ] a_ns_ty
+
+      let content =
+        let a = Ty.Var.mk "alpha" in
+        let a_ty = Ty.of_var a in
+        let a_ns_ty = Ty.nseq a_ty in
+        mk' ~name:"nseq.content" ~builtin:Builtin.NSeq_content "nseq.content"
+          [ a ] [ a_ns_ty ] (Ty.array Ty.int a_ty)
 
     end
 
@@ -3968,6 +3982,10 @@ module Term = struct
       let ty = match_nseq_elem_type s in
       apply_cst Const.NSeq.last [ty] [s]
 
+    let length s =
+      let ty = match_nseq_elem_type s in
+      apply_cst Const.NSeq.length [ty] [s]
+
     let get s i =
       let ty = match_nseq_elem_type s in
       apply_cst Const.NSeq.get [ty] [s;i]
@@ -3995,6 +4013,10 @@ module Term = struct
     let update s1 s2 =
       let ty = match_nseq_elem_type s1 in
       apply_cst Const.NSeq.update [ty] [s1;s2]
+
+    let content s =
+      let ty = match_nseq_elem_type s in
+      apply_cst Const.NSeq.content [ty] [s]
 
   end
 

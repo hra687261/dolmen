@@ -1603,6 +1603,7 @@ module Term : sig
     module NSeq: sig
       val first : t
       val last : t
+      val length : t
       val get : t
       val set : t
       val const : t
@@ -1610,6 +1611,7 @@ module Term : sig
       val concat : t
       val slice : t
       val update : t
+      val content : t
     end
   end
 
@@ -2064,6 +2066,7 @@ module Term : sig
   module NSeq: sig
     val first : t -> t
     val last: t -> t
+    val length: t -> t
     val get : t -> t -> t
     val set : t -> t -> t -> t
     val const: t -> t -> t -> t
@@ -2071,6 +2074,7 @@ module Term : sig
     val concat : t -> t -> t
     val slice : t -> t -> t -> t
     val update : t -> t -> t
+    val content : t -> t
   end
 end
 

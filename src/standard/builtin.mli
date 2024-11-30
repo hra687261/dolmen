@@ -747,6 +747,7 @@ type _ t +=
   | NSeq
   | NSeq_first
   | NSeq_last
+  | NSeq_length
   | NSeq_get
   | NSeq_set
   | NSeq_const
@@ -754,3 +755,4 @@ type _ t +=
   | NSeq_concat
   | NSeq_slice
   | NSeq_update
+  | NSeq_content

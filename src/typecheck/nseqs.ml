@@ -20,6 +20,8 @@ module Smtlib2 = struct
         Type.builtin_term (Base.term_app1 (module Type) env s T.NSeq.first)
       | Type.Id { name = Simple "nseq.last"; ns = Term } ->
         Type.builtin_term (Base.term_app1 (module Type) env s T.NSeq.last)
+      | Type.Id { name = Simple "nseq.length"; ns = Term } ->
+        Type.builtin_term (Base.term_app1 (module Type) env s T.NSeq.length)
       | Type.Id { name = Simple "nseq.get"; ns = Term } ->
         Type.builtin_term (Base.term_app2 (module Type) env s T.NSeq.get)
       | Type.Id { name = Simple "nseq.set"; ns = Term } ->
@@ -34,6 +36,8 @@ module Smtlib2 = struct
         Type.builtin_term (Base.term_app3 (module Type) env s T.NSeq.slice)
       | Type.Id { name = Simple "nseq.update"; ns = Term } ->
         Type.builtin_term (Base.term_app2 (module Type) env s T.NSeq.update)
+      | Type.Id { name = Simple "nseq.content"; ns = Term } ->
+        Type.builtin_term (Base.term_app1 (module Type) env s T.NSeq.content)
       | _ -> `Not_found
 
   end

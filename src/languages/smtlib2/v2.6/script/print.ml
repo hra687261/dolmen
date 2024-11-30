@@ -768,6 +768,7 @@ module Make
 
     | B.NSeq_first -> simple "nseq.first"
     | B.NSeq_last -> simple "nseq.last"
+    | B.NSeq_length -> simple "nseq.length"
     | B.NSeq_get -> simple "nseq.get"
     | B.NSeq_set -> simple "nseq.set"
     | B.NSeq_const -> simple "nseq.const"
@@ -775,6 +776,7 @@ module Make
     | B.NSeq_concat -> simple "nseq.concat"
     | B.NSeq_slice -> simple "nseq.slice"
     | B.NSeq_update -> simple "nseq.update"
+    | B.NSeq_content -> simple "nseq.content"
 
     (* generic case + fallback *)
     | B.Base | _ ->

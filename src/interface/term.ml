@@ -1893,9 +1893,7 @@ module type Smtlib_Seq = sig
 
   module Seq: sig
     val empty : ty -> t
-
     val unit : t -> t
-
     val len : t -> t
     val nth : t -> t -> t
     val update : t -> t -> t -> t
@@ -1912,6 +1910,7 @@ module type Smtlib_NSeq = sig
   module NSeq: sig
     val first : t -> t
     val last: t -> t
+    val length: t -> t
     val get : t -> t -> t
     val set : t -> t -> t -> t
     val const: t -> t -> t -> t
@@ -1919,7 +1918,7 @@ module type Smtlib_NSeq = sig
     val concat : t -> t -> t
     val slice : t -> t -> t -> t
     val update : t -> t -> t
-
+    val content : t -> t
   end
 
 end

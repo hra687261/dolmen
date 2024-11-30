@@ -871,6 +871,7 @@ module Smtlib2 = struct
 
       | B.NSeq_first
       | B.NSeq_last
+      | B.NSeq_length
       | B.NSeq_get
       | B.NSeq_set
       | B.NSeq_const
@@ -878,6 +879,7 @@ module Smtlib2 = struct
       | B.NSeq_concat
       | B.NSeq_slice
       | B.NSeq_update
+      | B.NSeq_content
         -> aux (add_nseq acc)
 
       | b ->
