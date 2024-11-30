@@ -831,7 +831,15 @@ module NSeqMono
     end
     )
 
-  let instance_db: (Ty.t, Term.Const.t CstM.t) Hashtbl.t = Hashtbl.create 17
+  module DB =
+    Hashtbl.Make(struct
+      type t = Ty.t
+
+      let equal = Ty.equal
+      let hash = Ty.hash
+    end)
+
+  let instance_db: Term.Const.t CstM.t DB.t = DB.create 100
 
   let vty_to_str ({ty_descr; _ }: Ty.t) =
     match ty_descr with
@@ -906,7 +914,7 @@ module NSeqMono
     let vtystr = vty_to_str vty in
     Term.Const.mk
       (Dolmen_std.Path.global ("nseq.slice."^vtystr))
-      (Ty.arrow [ Ty.int; Ty.int; Ty.nseq vty ] (Ty.nseq vty))
+      (Ty.arrow [ Ty.nseq vty; Ty.int; Ty.int ] (Ty.nseq vty))
 
   let mk_nseq_content vty =
     let vtystr = vty_to_str vty in
@@ -935,7 +943,7 @@ module NSeqMono
     let cstm = CstM.add Term.Const.NSeq.concat concat cstm in
     let cstm = CstM.add Term.Const.NSeq.slice slice cstm in
     let cstm = CstM.add Term.Const.NSeq.content content cstm in
-    Hashtbl.add instance_db vty cstm;
+    DB.add instance_db vty cstm;
     let decls = [
       mk_decl first;
       mk_decl last;
@@ -952,7 +960,7 @@ module NSeqMono
     decls
 
   let get_nseq_cst vty cst =
-    CstM.find cst (Hashtbl.find instance_db vty)
+    CstM.find cst (DB.find instance_db vty)
 
   type acc = {
     stmts_before_first_decls_and_asserts :
@@ -978,45 +986,10 @@ module NSeqMono
     | Pi (tyvl, ty) ->
       Ty.pi tyvl (translate_ty ty)
 
-  let cst_db = Hashtbl.create 17
-
-  let translate_term_cst =
-    fun (t: Expr.ty Expr.id) ->
-    match t with
-    | { id_ty = {
-        ty_descr = TyApp ({builtin = Builtin.Seq; _ }, [ _ ]); _
-      }; _ } ->
-      let id = Term.Const.hash t in
-      (match Hashtbl.find_opt cst_db id with
-       | None ->
-         let newc = Term.Const.mk t.path (translate_ty t.id_ty) in
-         Hashtbl.add cst_db id newc;
-         newc
-       | Some c ->
-         c)
-    | _ -> t
-
-  let mk_concat =
-    let rec aux prec l =
-      match l with
-      | [] -> prec
-      | h :: t ->
-        let next_fst = Term.Int.add (Term.NSeq.last prec) (Term.Int.mk "1") in
-        let prec = Term.NSeq.concat prec (Term.NSeq.relocate h next_fst) in
-        aux prec t
-    in
-    fun (l: View.term list): View.term ->
-      match l with
-      | [] | [_] -> assert false
-      | h :: t -> aux h t
-
   let rec translate_term (term: View.term): View.term =
     match term.term_descr with
-    | Var v ->
-      Term.of_var ((translate_term_cst v))
-
-    | Cst cst ->
-      Term.of_cst ((translate_term_cst cst))
+    | Cst _ | Var _ ->
+      term
 
     | App (
         {term_descr = Cst ({
@@ -1041,7 +1014,7 @@ module NSeqMono
     | Binder (Let_seq bindings, term) ->
       let bindings =
         List.map (fun (v,t) ->
-            (translate_term_cst v, translate_term t)
+            (v, translate_term t)
           ) bindings
       in
       Term.letin bindings (translate_term term)
@@ -1049,24 +1022,24 @@ module NSeqMono
     | Binder (Let_par bindings, term) ->
       let bindings =
         List.map (fun (v,t) ->
-            (translate_term_cst v, translate_term t)
+            (v, translate_term t)
           ) bindings
       in
       Term.letand bindings (translate_term term)
 
     | Binder (Lambda (tyvl, termvl), term) ->
       Term.lam
-        (tyvl, List.map translate_term_cst termvl)
+        (tyvl, termvl)
         (translate_term term)
 
     | Binder (Exists (tyvl, termvl), term) ->
       Term.ex
-        (tyvl, List.map translate_term_cst termvl)
+        (tyvl, termvl)
         (translate_term term)
 
     | Binder (Forall (tyvl, termvl), term) ->
       Term.all
-        (tyvl, List.map translate_term_cst termvl)
+        (tyvl, termvl)
         (translate_term term)
 
     | Match (term, patl) ->
@@ -1083,7 +1056,6 @@ module NSeqMono
     | Adt {ty; record; cases} ->
       let cases =
         Array.map (fun Expr.{cstr; tester; dstrs} ->
-            let dstrs = Array.map (Option.map translate_term_cst) dstrs in
             Expr.{cstr; tester; dstrs}
           ) cases
       in
@@ -1095,7 +1067,7 @@ module NSeqMono
     | `Type_decl (_, None) -> d
     | `Type_decl (ty, Some ty_def) -> `Type_decl (ty, Some (translate_ty_def ty_def))
     | `Term_decl tc ->
-      `Term_decl (translate_term_cst tc)
+      `Term_decl (tc)
 
   let translate_stmt (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
     match stmt.contents with
@@ -1130,14 +1102,12 @@ module NSeqMono
             | `Type_alias _ -> def :: acc
             | `Term_def (id, tcst, tyvl, params, body) ->
               `Term_def (
-                id, tcst, tyvl,
-                List.map translate_term_cst params,
+                id, tcst, tyvl, params,
                 translate_term body
               ) :: acc
             | `Instanceof (id, f, ty_args, vars, params, body) ->
               `Instanceof (
-                id, f, ty_args, vars,
-                List.map translate_term_cst params,
+                id, f, ty_args, vars, params,
                 translate_term body
               ) :: acc
           ) [] defl |> List.rev
