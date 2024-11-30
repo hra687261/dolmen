@@ -923,7 +923,7 @@ module NSeqMono
       (Ty.arrow [ Ty.nseq vty ] (Ty.array Ty.int vty))
 
   let new_nseq_instance vty =
-    let first = mk_nseq_first vty in
+    (* let first = mk_nseq_first vty in *)
     let last = mk_nseq_last vty in
     let length = mk_nseq_length vty in
     let get = mk_nseq_get vty in
@@ -933,7 +933,7 @@ module NSeqMono
     let concat = mk_nseq_concat vty in
     let slice = mk_nseq_slice vty in
     let content = mk_nseq_content vty in
-    let cstm = CstM.add Term.Const.NSeq.first first CstM.empty in
+    let cstm = (* CstM.add Term.Const.NSeq.first first *) CstM.empty in
     let cstm = CstM.add Term.Const.NSeq.last last cstm in
     let cstm = CstM.add Term.Const.NSeq.length length cstm in
     let cstm = CstM.add Term.Const.NSeq.get get cstm in
@@ -945,7 +945,7 @@ module NSeqMono
     let cstm = CstM.add Term.Const.NSeq.content content cstm in
     DB.add instance_db vty cstm;
     let decls = [
-      mk_decl first;
+      (* mk_decl first; *)
       mk_decl last;
       mk_decl length;
       mk_decl get;
@@ -994,7 +994,8 @@ module NSeqMono
     | App (
         {term_descr = Cst ({
              builtin = (
-               Builtin.NSeq_first | Builtin.NSeq_last | Builtin.NSeq_length |
+               (* Builtin.NSeq_first | *)
+               Builtin.NSeq_last | Builtin.NSeq_length |
                Builtin.NSeq_get | Builtin.NSeq_set | Builtin.NSeq_const |
                Builtin.NSeq_relocate | Builtin.NSeq_concat |
                Builtin.NSeq_slice | Builtin.NSeq_content
