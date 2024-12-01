@@ -75,7 +75,7 @@ module Smtlib2
       and type formula = Dolmen_std.Expr.term)
 = struct
 
-  let pipe = "Transform"
+  let pipe = "Transform.Smtlib2"
 
   module View = Dolmen_std.Expr.View.TFF
   module S = Dolmen_type.Logic.Smtlib2.Scan(View)
@@ -331,7 +331,7 @@ module Seq2NSeq
       and type formula = Dolmen_std.Expr.term)
 = struct
 
-  let pipe = "Transform"
+  let pipe = "Transform.Seq2NSeq"
 
   module View = Dolmen_std.Expr.View.TFF
   module S = Dolmen_type.Logic.Smtlib2.Scan(View)
@@ -814,7 +814,7 @@ module NSeqMono
       and type formula = Dolmen_std.Expr.term)
 = struct
 
-  let pipe = "Transform"
+  let pipe = "Transform.NSeqMono"
 
   module View = Dolmen_std.Expr.View.TFF
   module S = Dolmen_type.Logic.Smtlib2.Scan(View)
@@ -1182,6 +1182,305 @@ module NSeqMono
 end
 
 
+(* NSeqToSliceUpdate *)
+(* ************************************************************************ *)
+
+module NSeqToSliceUpdate
+    (State : State.S)
+    (Typer_Types : Typer.Types
+     with type ty = Dolmen_std.Expr.ty
+      and type ty_var = Dolmen_std.Expr.ty_var
+      and type ty_cst = Dolmen_std.Expr.ty_cst
+      and type ty_def = Dolmen_std.Expr.ty_def
+      and type term = Dolmen_std.Expr.term
+      and type term_var = Dolmen_std.Expr.term_var
+      and type term_cst = Dolmen_std.Expr.term_cst
+      and type formula = Dolmen_std.Expr.term)
+= struct
+
+  let pipe = "Transform.NSeqToSliceUpdate"
+
+  module View = Dolmen_std.Expr.View.TFF
+  module S = Dolmen_type.Logic.Smtlib2.Scan(View)
+  module Expr = Dolmen_std.Expr
+  module Term = Expr.Term
+  module Ty = Expr.Ty
+  module Builtin = Dolmen_std.Builtin
+
+
+  module CstM = Map.Make (
+    struct
+      type t = Term.Const.t
+      let compare = Term.Const.compare
+    end
+    )
+
+  (* ind -> ind' *)
+  module DB =
+    Hashtbl.Make(struct
+      type t = Term.Const.t
+
+      let equal = Term.Const.equal
+      let hash = Term.Const.hash
+    end)
+
+  let indices_db: Term.Const.t option DB.t = DB.create 100
+
+  let mk_decl cst: Typer_Types.typechecked Typer_intf.stmt =
+    let cststr =
+      match cst with
+      | Expr.{ path = Absolute { name; _ }; _ } -> name
+      | _ -> assert false
+    in
+    Typer_Types.{
+      id = Dolmen_std.Id.mk Dolmen_std.Namespace.Term cststr;
+      loc = Dolmen_std.Loc.no_loc;
+      contents = `Decls (false, [`Term_decl cst]);
+      attrs = [];
+      implicit = false;
+    }
+
+  type acc = {
+    stmts_before_first_decls_and_asserts :
+      Typer_Types.typechecked Typer_Types.stmt list;
+    other_stmts :
+      Typer_Types.typechecked Typer_Types.stmt list;
+  }
+
+  let get_cst ({term_descr; _}: View.term) =
+    match term_descr with
+    | Cst c -> c
+    | _ -> assert false
+
+  let new_index =
+    let cnt = ref 0 in
+    fun () ->
+      Term.Const.mk (Dolmen_std.Path.global (Fmt.str "new_ind_%d" (incr cnt; !cnt))) Ty.int
+
+  let new_index ?i () =
+    match i with
+    | None ->
+      let i = new_index () in
+      DB.add indices_db i None;
+      i
+    | Some i ->
+      match DB.find_opt indices_db i with
+      | Some (Some i') -> i'
+      | Some None -> assert false
+      | None ->
+        let name =
+          match i.path with
+          | Absolute {name; _} -> name
+          | _ -> assert false
+        in
+        let i' =
+          Term.Const.mk
+            (Dolmen_std.Path.global (Fmt.str "%s_bis" name))
+            Ty.int
+        in
+        DB.add indices_db i (Some i');
+        i'
+
+  let init () = { stmts_before_first_decls_and_asserts = []; other_stmts = []}
+
+  let rec translate_term ?(to_nseq = false) (term: View.term): View.term =
+    match term.term_descr with
+    | Cst _ when to_nseq ->
+      Term.NSeq.const
+        (Term.of_cst (new_index ()))
+        (Term.of_cst (new_index ()))
+        term
+
+    | Cst _ | Var _ ->
+      term
+
+    | App (
+        {term_descr = Cst ({ builtin = Builtin.NSeq_set; _ }); _},
+        [ _ ], [a; i; v]
+      ) ->
+      Term.NSeq.update
+        (translate_term a)
+        (Term.NSeq.relocate
+           (translate_term ~to_nseq:true v)
+           i)
+
+    | App (
+        {term_descr = Cst ({ builtin = Builtin.NSeq_get; _ }); _},
+        [ _ ], [a; i]
+      ) when to_nseq ->
+      Term.NSeq.slice
+        (translate_term a) i (Term.of_cst (new_index ~i:(get_cst i) ()))
+
+    | App (app, tyl, l) ->
+      Term.apply
+        (translate_term app)
+        tyl
+        (List.map translate_term l)
+
+    | Binder (Let_seq bindings, term) ->
+      let bindings =
+        List.map (fun (v,t) ->
+            (v, translate_term t)
+          ) bindings
+      in
+      Term.letin bindings (translate_term term)
+
+    | Binder (Let_par bindings, term) ->
+      let bindings =
+        List.map (fun (v,t) ->
+            (v, translate_term t)
+          ) bindings
+      in
+      Term.letand bindings (translate_term term)
+
+    | Binder (Lambda (tyvl, termvl), term) ->
+      Term.lam
+        (tyvl, termvl)
+        (translate_term term)
+
+    | Binder (Exists (tyvl, termvl), term) ->
+      Term.ex
+        (tyvl, termvl)
+        (translate_term term)
+
+    | Binder (Forall (tyvl, termvl), term) ->
+      Term.all
+        (tyvl, termvl)
+        (translate_term term)
+
+    | Match (term, patl) ->
+      Term.pattern_match
+        (translate_term term)
+        (List.map (fun (p, t) ->
+             (* Translating patterns should be unnecessary *)
+             (translate_term p, translate_term t)
+           ) patl)
+
+  let translate_ty_def (ty_def: Typer_Types.ty_def): Typer_Types.ty_def =
+    match ty_def with
+    | Abstract -> ty_def
+    | Adt {ty; record; cases} ->
+      let cases =
+        Array.map (fun Expr.{cstr; tester; dstrs} ->
+            Expr.{cstr; tester; dstrs}
+          ) cases
+      in
+      Adt {ty; record; cases}
+
+  let translate_decl (d: Typer_Types.decl): Typer_Types.decl =
+    match d with
+    | `Type_param_decl _
+    | `Type_decl (_, None) -> d
+    | `Type_decl (ty, Some ty_def) -> `Type_decl (ty, Some (translate_ty_def ty_def))
+    | `Term_decl tc ->
+      `Term_decl (tc)
+
+  let translate_stmt (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
+    match stmt.contents with
+    | `Decls (b, decl) -> (
+        st,
+        { acc with other_stmts = {
+              stmt with
+              contents = `Decls (b, List.map translate_decl decl)} :: acc.other_stmts },
+        res
+      )
+
+    | `Defs (b, defl) ->
+      let defl =
+        List.fold_left (fun acc def ->
+            match def with
+            | `Type_alias _ -> def :: acc
+            | `Term_def (id, tcst, tyvl, params, body) ->
+              `Term_def (
+                id, tcst, tyvl, params,
+                translate_term body
+              ) :: acc
+            | `Instanceof (id, f, ty_args, vars, params, body) ->
+              `Instanceof (
+                id, f, ty_args, vars, params,
+                translate_term body
+              ) :: acc
+          ) [] defl |> List.rev
+      in
+      (st,
+       { acc with other_stmts = {
+             stmt with
+             contents = `Defs (b, defl)} :: acc.other_stmts },
+       res)
+
+    | `Hyp t -> (
+        st,
+        { acc with other_stmts = {
+              stmt with
+              contents = `Hyp (translate_term t)} :: acc.other_stmts },
+        res
+      )
+    | `Goal t -> (
+        st,
+        { acc with other_stmts = {
+              stmt with
+              contents = `Goal (translate_term t)} :: acc.other_stmts },
+        res
+      )
+    | `Clause l -> (
+        st,
+        { acc with other_stmts = {
+              stmt with
+              contents = `Clause (List.map translate_term l)} :: acc.other_stmts },
+        res
+      )
+    | `Solve (hyps, goals) -> (
+        st,
+        { acc with other_stmts = {
+              stmt with
+              contents = `Solve (
+                  List.map translate_term hyps,
+                  List.map translate_term goals
+                )
+            } :: acc.other_stmts },
+        res
+      )
+    | `Get_value l -> (
+        st,
+        { acc with other_stmts =
+                     {stmt with
+                      contents = `Get_value (List.map translate_term l)} :: acc.other_stmts },
+        res
+      )
+    | `End ->
+      let decls =
+        DB.fold (fun ind new_ind acc ->
+            match new_ind with
+            | None -> mk_decl ind :: acc
+            | Some ind -> mk_decl ind :: acc) indices_db []
+      in
+      st, {
+        stmts_before_first_decls_and_asserts = [];
+        other_stmts = []
+      },
+      List.rev_append acc.stmts_before_first_decls_and_asserts @@
+      decls @ (List.rev_append acc.other_stmts res)
+
+    | _ when acc.other_stmts = [] ->
+      (st,
+       { acc with
+         stmts_before_first_decls_and_asserts =
+           stmt :: acc.stmts_before_first_decls_and_asserts },
+       res)
+
+    | _ ->
+      (st, { acc with other_stmts = stmt :: acc.other_stmts }, res)
+
+  let transform st acc (l : Typer_Types.typechecked Typer_Types.stmt list) =
+    List.fold_left translate_stmt (st, acc, []) l
+
+end
+
+
+
+
+
+
 (* Pipe functor *)
 (* ************************************************************************ *)
 
@@ -1221,6 +1520,7 @@ module Make
   module Smt2 = Smtlib2(State)(Typer_Types)
   module Seq2NSeq = Seq2NSeq(State)(Typer_Types)
   module NSeqMono = NSeqMono(State)(Typer_Types)
+  module NSeqToSliceUpdate = NSeqToSliceUpdate(State)(Typer_Types)
 
   (* setup *)
 
@@ -1229,7 +1529,7 @@ module Make
   let state : state State.key =
     State.create_key ~pipe "transform_state"
 
-  let init ~compute_logic ~translate ~monomorphize ?lang st =
+  let init ~compute_logic ~translate ~monomorphize ~nseq2slupd ?lang st =
     let mk (type acc) (acc : acc) (transformer : acc transformer) =
       Transform { acc; transformer; }
     in
@@ -1239,6 +1539,8 @@ module Make
         st, mk (Seq2NSeq.init ~monomorphize ()) (module Seq2NSeq)
       | Smtlib2 _ when monomorphize ->
         st, mk (NSeqMono.init ()) (module NSeqMono)
+      | Smtlib2 _ when nseq2slupd ->
+        st, mk (NSeqToSliceUpdate.init ()) (module NSeqToSliceUpdate)
       | Smtlib2 _ ->
         let acc = mk (Smt2.init ~compute_logic) (module Smt2) in
         st,  acc

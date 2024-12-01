@@ -385,7 +385,7 @@ let mk_run_state
     abort_on_bug
     time_limit size_limit
     response_file output_file
-    flow_check compute_logic seq2nseq nseq_mono
+    flow_check compute_logic seq2nseq nseq_mono nseq2slupd
     header_check header_licenses header_lang_version
     smtlib2_forced_logic smtlib2_exts
     type_check extension_builtins
@@ -433,6 +433,7 @@ let mk_run_state
   |> Loop.Transform.init ~compute_logic
     ~translate:seq2nseq
     ~monomorphize:nseq_mono
+    ~nseq2slupd
   |> Loop.Header.init
     ~header_check
     ~header_licenses
@@ -653,6 +654,10 @@ let state =
     let doc = "Monomorphize NSeq theory" in
     Arg.(value & flag & info ["nseq-mono"] ~doc)
   in
+  let nseq2slupd =
+    let doc = "Translate nseq.set to nseq.update and nseq.get to nseq.slice" in
+    Arg.(value & flag & info ["nseq-to-sl-upd"] ~doc)
+  in
   let header_check =
     let doc = "If true, then the presence of headers will be checked in the
                input file (and errors raised if they are not present)." in
@@ -757,7 +762,7 @@ let state =
         abort_on_bug $
         time $ size $
         response_file $ output_file $
-        flow_check $ compute_logic $ seq2nseq $ nseq_mono $
+        flow_check $ compute_logic $ seq2nseq $ nseq_mono $ nseq2slupd $
         header_check $ header_licenses $ header_lang_version $
         force_smtlib2_logic $ smtlib2_extensions $
         typing $ typing_ext $
