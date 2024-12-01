@@ -1208,9 +1208,9 @@ module NSeqToSliceUpdate
   module Builtin = Dolmen_std.Builtin
 
 
-  module CstM = Map.Make (
+  module VMap = Map.Make (
     struct
-      type t = Term.Const.t
+      type t = Term.Var.t
       let compare = Term.Const.compare
     end
     )
@@ -1283,15 +1283,21 @@ module NSeqToSliceUpdate
 
   let init () = { stmts_before_first_decls_and_asserts = []; other_stmts = []}
 
-  let rec translate_term ?(to_nseq = false) (term: View.term): View.term =
+  let rec translate_term ?(to_nseq = false) bindings_map (term: View.term): View.term =
     match term.term_descr with
+    | Var v -> (
+        match VMap.find_opt v bindings_map with
+        | Some t -> translate_term ~to_nseq bindings_map t
+        | _ -> term
+      )
+
     | Cst _ when to_nseq ->
       Term.NSeq.const
         (Term.of_cst (new_index ()))
         (Term.of_cst (new_index ()))
         term
 
-    | Cst _ | Var _ ->
+    | Cst _ ->
       term
 
     | App (
@@ -1299,9 +1305,9 @@ module NSeqToSliceUpdate
         [ _ ], [a; i; v]
       ) ->
       Term.NSeq.update
-        (translate_term a)
+        (translate_term bindings_map a)
         (Term.NSeq.relocate
-           (translate_term ~to_nseq:true v)
+           (translate_term bindings_map ~to_nseq:true v)
            i)
 
     | App (
@@ -1309,51 +1315,53 @@ module NSeqToSliceUpdate
         [ _ ], [a; i]
       ) when to_nseq ->
       Term.NSeq.slice
-        (translate_term a) i (Term.of_cst (new_index ~i:(get_cst i) ()))
+        (translate_term bindings_map a) i (Term.of_cst (new_index ~i:(get_cst i) ()))
 
     | App (app, tyl, l) ->
       Term.apply
-        (translate_term app)
+        (translate_term bindings_map app)
         tyl
-        (List.map translate_term l)
+        (List.map (translate_term bindings_map) l)
 
     | Binder (Let_seq bindings, term) ->
-      let bindings =
-        List.map (fun (v,t) ->
-            (v, translate_term t)
-          ) bindings
+      let bindings_map =
+        List.fold_left (fun bindings_map (v,t) ->
+            let t = translate_term bindings_map t in
+            VMap.add v t bindings_map
+          ) bindings_map bindings
       in
-      Term.letin bindings (translate_term term)
+      translate_term bindings_map term
 
     | Binder (Let_par bindings, term) ->
-      let bindings =
-        List.map (fun (v,t) ->
-            (v, translate_term t)
-          ) bindings
+      let bindings_map =
+        List.fold_left (fun bindings_map (v,t) ->
+            let t = translate_term bindings_map t in
+            VMap.add v t bindings_map
+          ) bindings_map bindings
       in
-      Term.letand bindings (translate_term term)
+      translate_term bindings_map term
 
     | Binder (Lambda (tyvl, termvl), term) ->
       Term.lam
         (tyvl, termvl)
-        (translate_term term)
+        (translate_term bindings_map term)
 
     | Binder (Exists (tyvl, termvl), term) ->
       Term.ex
         (tyvl, termvl)
-        (translate_term term)
+        (translate_term bindings_map term)
 
     | Binder (Forall (tyvl, termvl), term) ->
       Term.all
         (tyvl, termvl)
-        (translate_term term)
+        (translate_term bindings_map term)
 
     | Match (term, patl) ->
       Term.pattern_match
-        (translate_term term)
+        (translate_term bindings_map term)
         (List.map (fun (p, t) ->
              (* Translating patterns should be unnecessary *)
-             (translate_term p, translate_term t)
+             (translate_term bindings_map p, translate_term bindings_map t)
            ) patl)
 
   let translate_ty_def (ty_def: Typer_Types.ty_def): Typer_Types.ty_def =
@@ -1375,7 +1383,7 @@ module NSeqToSliceUpdate
     | `Term_decl tc ->
       `Term_decl (tc)
 
-  let translate_stmt (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
+  let translate_stmt (bindings_map: Term.t VMap.t) (st, acc, res) (stmt : Typer_Types.typechecked Typer_Types.stmt) =
     match stmt.contents with
     | `Decls (b, decl) -> (
         st,
@@ -1393,12 +1401,12 @@ module NSeqToSliceUpdate
             | `Term_def (id, tcst, tyvl, params, body) ->
               `Term_def (
                 id, tcst, tyvl, params,
-                translate_term body
+                translate_term bindings_map body
               ) :: acc
             | `Instanceof (id, f, ty_args, vars, params, body) ->
               `Instanceof (
                 id, f, ty_args, vars, params,
-                translate_term body
+                translate_term bindings_map body
               ) :: acc
           ) [] defl |> List.rev
       in
@@ -1412,21 +1420,21 @@ module NSeqToSliceUpdate
         st,
         { acc with other_stmts = {
               stmt with
-              contents = `Hyp (translate_term t)} :: acc.other_stmts },
+              contents = `Hyp (translate_term bindings_map t)} :: acc.other_stmts },
         res
       )
     | `Goal t -> (
         st,
         { acc with other_stmts = {
               stmt with
-              contents = `Goal (translate_term t)} :: acc.other_stmts },
+              contents = `Goal (translate_term bindings_map t)} :: acc.other_stmts },
         res
       )
     | `Clause l -> (
         st,
         { acc with other_stmts = {
               stmt with
-              contents = `Clause (List.map translate_term l)} :: acc.other_stmts },
+              contents = `Clause (List.map (translate_term bindings_map) l)} :: acc.other_stmts },
         res
       )
     | `Solve (hyps, goals) -> (
@@ -1434,8 +1442,8 @@ module NSeqToSliceUpdate
         { acc with other_stmts = {
               stmt with
               contents = `Solve (
-                  List.map translate_term hyps,
-                  List.map translate_term goals
+                  List.map (translate_term bindings_map) hyps,
+                  List.map (translate_term bindings_map) goals
                 )
             } :: acc.other_stmts },
         res
@@ -1444,7 +1452,10 @@ module NSeqToSliceUpdate
         st,
         { acc with other_stmts =
                      {stmt with
-                      contents = `Get_value (List.map translate_term l)} :: acc.other_stmts },
+                      contents =
+                        `Get_value
+                          (List.map (translate_term bindings_map) l)
+                     } :: acc.other_stmts },
         res
       )
     | `End ->
@@ -1472,7 +1483,7 @@ module NSeqToSliceUpdate
       (st, { acc with other_stmts = stmt :: acc.other_stmts }, res)
 
   let transform st acc (l : Typer_Types.typechecked Typer_Types.stmt list) =
-    List.fold_left translate_stmt (st, acc, []) l
+    List.fold_left (translate_stmt VMap.empty) (st, acc, []) l
 
 end
 
