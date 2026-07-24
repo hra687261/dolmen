@@ -243,7 +243,7 @@ module Smtlib2 = struct
       in
       Some res
 
-  let to_string l =
+  let rec to_string l =
     (* *)
     let b = Buffer.create 13 in
     assert (List.mem `Core l.theories);
@@ -310,8 +310,10 @@ module Smtlib2 = struct
 
     (* Incorrect cases *)
     | _, _, (Linear `Large | Difference `UFIDL) ->
-      (* TODO: try and find a fallback logic ? *)
-      assert false
+      (* TODO: Emit a warning stating that thr spec of the smtlib forces regular
+         arithmetic in these case for stupid reasons. *)
+      to_string { l with features = { l.features with arithmetic = Regular; }; }
+
     | _, (All | Only_int_int | Only_ints_real | Only_bitvec), arith_config ->
       Format.eprintf "Logic: %s / %a ?!@." s Arith.Smtlib2.print_config arith_config;
       (* TODO: try and find a fallback logic ? *)
