@@ -317,7 +317,7 @@ module Smtlib2 = struct
     | _, (All | Only_int_int | Only_ints_real | Only_bitvec), arith_config ->
       Format.eprintf "Logic: %s / %a ?!@." s Arith.Smtlib2.print_config arith_config;
       (* TODO: try and find a fallback logic ? *)
-      assert false
+      failwith "No minimal logic could be found, please report upstream, ^^"
 
     (* in case we have quantifiers and only constants,
        the logic might end up empty. in that case, we default to UF *)
