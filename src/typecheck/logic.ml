@@ -319,7 +319,6 @@ module Smtlib2 = struct
       (* TODO: try and find a fallback logic ? *)
       assert false
 
-
     (* in case we have quantifiers and only constants,
        the logic might end up empty. in that case, we default to UF *)
     | "", _, _ -> "UF"
@@ -722,7 +721,6 @@ module Smtlib2 = struct
           | Floor_to_int `Real ->
             aux (add_arith `Real (add_arith `Int acc))
 
-
           | Lt (#arith as k) | Leq (#arith as k)
           | Gt (#arith as k) | Geq (#arith as k)
             -> aux (add_arith k acc)
@@ -808,9 +806,9 @@ module Smtlib2 = struct
           | Div_e (`Rat | `Real) | Modulo_e (`Rat | `Real)
           | Pow _ | Div_t _ | Modulo_t _ | Div_f _ | Modulo_f _
           | Is_rat _ | Floor _ | Ceiling _ | Truncate _ | Round _
-            (* These builtins cannot be printed in smtlib scripts.
-               TODO: should this be an error instead ? *)
-            -> acc
+            (* These builtins cannot be printed in smtlib scripts. *)
+            ->
+            failwith (Format.asprintf "unknown_arithmetic builtin")
 
         end
 
