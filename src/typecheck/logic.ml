@@ -735,7 +735,7 @@ module Smtlib2 = struct
               | _ -> assert false (* incorrect use of B.Minus *)
             end
 
-          | Add (`Int as k) -> add_linear_arith_strict k acc
+          | Add (`Int as k) -> aux (add_linear_arith_strict k acc)
           | Add (`Real as k) ->
             begin match term_arith_difference_count_list `Init t_args with
               | `Ok _ -> add_dl_arith k acc
