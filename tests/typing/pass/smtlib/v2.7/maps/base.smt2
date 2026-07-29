@@ -10,7 +10,7 @@
 (assert (= 0 (g 1 2)))
 (assert (= 0 (@ g 1 2)))
 
-(assert (= 0 (@ (g 1) 2)))
-(assert (= 0 (i 1 (- 1))))
+(assert (= 0 (@ (@ g 1) 2)))
+(assert (= 0 (@ (@ i 1) (- 1))))
 
 (check-sat)
