@@ -217,13 +217,20 @@ let print_reason_opt ?already fmt = function
   | Some r -> print_reason ?already fmt r
   | None -> Format.fprintf fmt "was bound at <location missing>"
 
+let print_nth fmt = function
+  | 0 -> Format.fprintf fmt "1st"
+  | 1 -> Format.fprintf fmt "2nd"
+  | 2 -> Format.fprintf fmt "3rd"
+  | i -> Format.fprintf fmt "%dth" (i + 1)
+
 let rec print_wildcard_origin fmt = function
   | T.Arg_of src
   | T.Ret_of src -> print_wildcard_origin fmt src
   | T.From_source _ast ->
     Format.fprintf fmt "the@ contents@ of@ a@ source@ wildcard"
-  | T.Added_type_argument _ast ->
-    Format.fprintf fmt "the@ implicit@ type@ to@ provide@ to@ an@ application"
+  | T.Added_type_argument (_ast, nth) ->
+    Format.fprintf fmt "the@ %a@ implicit@ type@ to@ provide@ to@ an@ application"
+      print_nth nth
   | T.Symbol_inference { symbol; symbol_loc = _; inferred_ty; } ->
     Format.fprintf fmt
       "the@ type@ for@ the@ symbol@ %a@ to@ be@ %a"
@@ -253,7 +260,7 @@ let rec print_wildcard_loc env fmt = function
     Format.fprintf fmt
       "The@ source@ wildcard@ is@ located@ at@ %a"
       Dolmen.Std.Loc.fmt_pos loc
-  | T.Added_type_argument ast ->
+  | T.Added_type_argument (ast, _nth) ->
     let loc = Dolmen.Std.Loc.full_loc (T.loc env ast.loc) in
     Format.fprintf fmt
       "The@ application@ is@ located@ at@ %a"
@@ -279,12 +286,12 @@ let rec print_wildcard_origin_loc env fmt = function
     Format.fprintf fmt
       "a@ source@ wildcard@ located@ at@ %a"
       Dolmen.Std.Loc.fmt_pos loc
-  | T.Added_type_argument ast ->
+  | T.Added_type_argument (ast, nth) ->
     let loc = Dolmen.Std.Loc.full_loc (T.loc env ast.loc) in
     Format.fprintf fmt
-      "the@ implicit@ type@ argument@ to@ provide@ to@ \
+      "the@ %a@ implicit@ type@ argument@ to@ provide@ to@ \
        the@ polymorphic@ application@ at@ %a"
-      Dolmen.Std.Loc.fmt_pos loc
+      print_nth nth Dolmen.Std.Loc.fmt_pos loc
   | T.Symbol_inference { symbol; symbol_loc; inferred_ty = _; } ->
     let loc = Dolmen.Std.Loc.full_loc (T.loc env symbol_loc) in
     Format.fprintf fmt
@@ -855,6 +862,34 @@ let inference_scope_escape =
           (print_reason_opt ~already:false) var_reason)
     ~name:"Scope escape from a type due to inference" ()
 
+let dumb_polymorphism =
+  Report.Warning.mk ~code ~mnemonic:"dumb-poly"
+    ~message:(fun fmt (env, ty, w, sources) ->
+        let pp_sep fmt () = Format.fprintf fmt "@ " in
+        let pp_src fmt src =
+          Format.fprintf fmt "@[<hov>%a@]" (print_wildcard_origin_loc env) src
+        in
+        let pp_wild fmt (w, srcs) =
+          Format.fprintf fmt "%a, @[<v>%a@]"
+            (pp_wrap Dolmen.Std.Expr.Print.id) w
+            (Format.pp_print_list ~pp_sep pp_src) srcs
+        in
+        Format.fprintf fmt
+          "@[<v>This term has type@ \
+                  %s%a@ \
+                which contains the following free variable@ \
+                  %s%a@ \
+                @[<hov>%a@]@]"
+          "  " Dolmen.Std.Expr.Print.ty ty
+          "  " (Format.pp_print_list ~pp_sep pp_wild) [w, sources]
+          Format.pp_print_text
+          "This is not allowed because the SMT-LIB enforces seriously \
+           limiting constraints on type inference, which are particularly \
+           surprising and annoying in the context of polymorphism and \
+           higher-order."
+      )
+    ~name:"SMT-LIB polymorphism limitations" ()
+
 let unbound_type_wildcards =
   Report.Error.mk ~code ~mnemonic:"inference-incomplete"
     ~message:(fun fmt (env, l) ->
@@ -1334,6 +1369,10 @@ module Typer(State : State.S) = struct
       if var_can_be_unused v then st
       else warn ~input ~loc st unused_term_variable (kind, v)
 
+    (* SMT-LIB's dumb polymorphism *)
+    | T.Dumb_polymorphism (ty, w, sources) ->
+      warn ~input ~loc st dumb_polymorphism (env, ty, w, sources)
+
     (* *)
     | T.Superfluous_destructor _ ->
       warn ~input ~loc st superfluous_destructor ()
@@ -1626,7 +1665,7 @@ module Typer(State : State.S) = struct
          is declared in the file, but it's easier this way).
        - there are no explicit declaration or definitions, hence no builtins *)
     | `Logic Dimacs | `Logic ICNF ->
-      let poly = T.Flexible in
+      let poly_args = T.Flexible in
       let var_infer = T.{
           var_hook = ignore;
           infer_unbound_vars = No_inference;
@@ -1647,12 +1686,12 @@ module Typer(State : State.S) = struct
         ]) in
       T.empty_env ~order:First_order
         ~st:(State.get ty_state st).typer
-        ~var_infer ~sym_infer ~poly
+        ~var_infer ~sym_infer ~poly_args
         ~warnings ~file builtins
 
     (* Alt-Ergo format *)
     | `Logic Alt_ergo ->
-      let poly = T.Flexible in
+      let poly_args = T.Flexible in
       let free_wildcards = T.Implicitly_universally_quantified in
       let var_infer = T.{
           var_hook = ignore;
@@ -1675,7 +1714,7 @@ module Typer(State : State.S) = struct
         ]) in
       T.empty_env ~order:First_order
         ~st:(State.get ty_state st).typer
-        ~var_infer ~sym_infer ~poly
+        ~var_infer ~sym_infer ~poly_args
         ~free_wildcards ~warnings ~file
         builtins
 
@@ -1684,7 +1723,7 @@ module Typer(State : State.S) = struct
        - base + arith builtins
     *)
     | `Logic Zf ->
-      let poly = T.Flexible in
+      let poly_args = T.Flexible in
       let var_infer = T.{
           var_hook = ignore;
           infer_unbound_vars = No_inference;
@@ -1703,7 +1742,7 @@ module Typer(State : State.S) = struct
         ]) in
       T.empty_env ~order:Higher_order
         ~st:(State.get ty_state st).typer
-        ~var_infer ~sym_infer ~poly
+        ~var_infer ~sym_infer ~poly_args
         ~warnings ~file builtins
 
     (* TPTP
@@ -1711,7 +1750,7 @@ module Typer(State : State.S) = struct
        - 2 base theories (Core and Arith)
     *)
     | `Logic Tptp v ->
-      let poly = T.Explicit in
+      let poly_args = T.Explicit in
       begin match tptp_kind_of_attrs attrs with
         | Some "thf" ->
           let var_infer = T.{
@@ -1732,7 +1771,7 @@ module Typer(State : State.S) = struct
             ]) in
           T.empty_env ~order:Higher_order
             ~st:(State.get ty_state st).typer
-            ~var_infer ~sym_infer ~poly
+            ~var_infer ~sym_infer ~poly_args
             ~warnings ~file:file builtins
         | Some ("tff" | "tpi" | "fof" | "cnf") ->
           let var_infer = T.{
@@ -1769,14 +1808,14 @@ module Typer(State : State.S) = struct
             ]) in
           T.empty_env ~order:First_order
             ~st:(State.get ty_state st).typer
-            ~var_infer ~sym_infer ~poly
+            ~var_infer ~sym_infer ~poly_args
             ~warnings ~file builtins
         | bad_kind ->
           let builtins = Dolmen_type.Base.noop in
           let env =
             T.empty_env
               ~st:(State.get ty_state st).typer
-              ~poly ~warnings ~file builtins
+              ~poly_args ~warnings ~file builtins
           in
           T._error env (Located loc) (Bad_tptp_kind bad_kind)
       end
@@ -1790,7 +1829,12 @@ module Typer(State : State.S) = struct
          wildcards that are implicitly universally quantified
     *)
     | `Logic Smtlib2 v ->
-      let poly = T.Implicit in
+      let poly =
+        match v with
+        | `Poly -> T.Normal
+        | _ -> T.Dumb
+      in
+      let poly_args = T.Implicit in
       let var_infer = T.{
           var_hook = ignore;
           infer_unbound_vars = No_inference;
@@ -1815,7 +1859,7 @@ module Typer(State : State.S) = struct
           let env =
             T.empty_env ~order:First_order
               ~st:(State.get ty_state st).typer
-              ~var_infer ~sym_infer ~poly ~free_wildcards
+              ~var_infer ~sym_infer ~poly ~poly_args ~free_wildcards
               ~warnings ~file builtins
           in
           T._error env (Located loc) Missing_smtlib_logic
@@ -1827,11 +1871,12 @@ module Typer(State : State.S) = struct
           let quants = logic.features.quantifiers in
           T.empty_env ~order:First_order
             ~st:(State.get ty_state st).typer
-            ~var_infer ~sym_infer ~poly ~quants ~free_wildcards
+            ~var_infer ~sym_infer ~poly ~poly_args ~quants ~free_wildcards
             ~warnings ~file builtins
       end
     | `Response Smtlib2 v ->
-      let poly = T.Implicit in
+      let poly = T.Dumb in
+      let poly_args = T.Implicit in
       let var_infer = T.{
           var_hook = ignore;
           infer_unbound_vars = No_inference;
@@ -1856,7 +1901,7 @@ module Typer(State : State.S) = struct
           let env =
             T.empty_env ~order:First_order
               ~st:(State.get ty_state st).typer
-              ~var_infer ~sym_infer ~poly ~free_wildcards
+              ~var_infer ~sym_infer ~poly ~poly_args ~free_wildcards
               ~warnings ~file builtins
           in
           T._error env (Located loc) Missing_smtlib_logic
@@ -1868,7 +1913,7 @@ module Typer(State : State.S) = struct
           let quants = logic.features.quantifiers in
           T.empty_env ~order:First_order
             ~st:(State.get ty_state st).typer
-            ~var_infer ~sym_infer ~poly ~quants ~free_wildcards
+            ~var_infer ~sym_infer ~poly ~poly_args ~quants ~free_wildcards
             ~warnings ~file builtins
       end
 
@@ -2037,8 +2082,8 @@ module Typer(State : State.S) = struct
       end
     | `Term_decl (c : Dolmen.Std.Expr.term_cst) ->
       let is_function =
-        let vars, args, _ = Dolmen.Std.Expr.Ty.poly_sig c.id_ty in
-        vars <> [] || args <> []
+        let _, params, _ = Dolmen.Std.Expr.Ty.poly_sig c.id_ty in
+        params <> []
       in
       if is_function && not (allow_function_decl st) then
         T._error env (Decl d) Illegal_decl
