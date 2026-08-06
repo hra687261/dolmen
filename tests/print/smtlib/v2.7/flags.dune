@@ -1,1 +1,2 @@
 --output=smt2.7
+--warn=-all

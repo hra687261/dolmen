@@ -361,6 +361,16 @@ module Make(Config : Config)(Lexer : Lexer with type token := Config.token) = st
       (* TODO: setup a cache from names to category in one of the env's keys *)
       symbol env fmt name
 
+    let ty_head_assoc _env c =
+      (* WARNING: this `blt` function should only be called with builtins that
+         do not have payload (such as terms), since the polymorphic comparison
+         will not work adequately in these cases. *)
+      let blt b = fun c -> V.Ty.Cst.builtin c = b in
+      let b = V.Ty.Cst.builtin c in
+      match b with
+      | B.Map T -> `Right_assoc (blt b)
+      | _ -> `Nope
+
     let ty_head_name env c =
       (* TODO: add reservations for the builtin names in the env *)
       let int = string_of_int in
@@ -391,6 +401,12 @@ module Make(Config : Config)(Lexer : Lexer with type token := Config.token) = st
       match V.Ty.view ~expand:false t with
       | Var v -> ty_var env fmt v
       | App (head, args) ->
+        let args =
+          match ty_head_assoc env head with
+          | `Nope -> args
+          | `Left_assoc top_head -> E.ty_left_assoc top_head args
+          | `Right_assoc top_head -> E.ty_right_assoc top_head args
+        in
         let f = ty_head_name env head in
         begin match args with
           | [] ->
@@ -479,23 +495,23 @@ module Make(Config : Config)(Lexer : Lexer with type token := Config.token) = st
       | Signature (_ :: _, _, _) -> true
       | _ -> false
 
-    let is_full_ho_map_apply t args =
+    let rec is_ho_map_apply_full ty args =
       let rec consume ty_args t_args =
         match ty_args, t_args with
         | [], _ -> assert false
-        | [_ty_ret], _ -> true
+        | [ty_ret], _ -> is_ho_map_apply_full ty_ret t_args
         | _ :: ty_args, _ :: t_args -> consume ty_args t_args
         | _ :: _ty_args, [] -> false
       in
       (* similarly to the situation in `term_cst_poly`, we want the actual type,
          and not stop at aliases *)
-      match V.Ty.view ~expand:true (V.Term.ty t) with
+      match V.Ty.view ~expand:true ty with
       | App (ty_cst, ty_args) ->
         begin match V.Ty.Cst.builtin ty_cst with
           | B.Map T -> consume ty_args args
-          | _ -> false
+          | _ -> true
         end
-      | _ -> false
+      | _ -> true
 
     (* smtlib has implicit type arguments, i.e. the type args are not printed.
        Therefore, whenever a polymorphic symbol is used, its type arguments
@@ -554,8 +570,8 @@ module Make(Config : Config)(Lexer : Lexer with type token := Config.token) = st
       let head, ty_args, args =
         let ty_args, args =
           match term_cst_assoc env head with
-          | `Left_assoc top_head -> None, E.left_assoc top_head args
-          | `Right_assoc top_head -> None, E.right_assoc top_head args
+          | `Left_assoc top_head -> None, E.term_left_assoc top_head args
+          | `Right_assoc top_head -> None, E.term_right_assoc top_head args
           | `None -> Some ty_args, args
         in
         match V.Term.Cst.builtin head, args with
@@ -564,7 +580,7 @@ module Make(Config : Config)(Lexer : Lexer with type token := Config.token) = st
             | App (h, _, _) ->
               begin match term_cst_chainable env h with
                 | `Chainable top_head ->
-                  begin match E.chainable top_head args with
+                  begin match E.term_chainable top_head args with
                     | Some new_args -> h, None, new_args
                     | None -> head, ty_args, args
                   end
@@ -678,7 +694,7 @@ module Make(Config : Config)(Lexer : Lexer with type token := Config.token) = st
                 begin match args with
                   | f :: other_args ->
                     begin match V.Term.view f with
-                      | App (c, _, []) when is_full_ho_map_apply f other_args ->
+                      | App (c, _, []) when is_ho_map_apply_full (V.Term.ty f) other_args ->
                         let name = Env.Term_cst.name env c in
                         let id = Dolmen_std.Id.create Term name in
                         app ~pp:term env fmt (id, other_args)
