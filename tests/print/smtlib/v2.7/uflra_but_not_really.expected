@@ -1,4 +1,3 @@
-Warning The logic used to typecheck the problem (ALL) is not minimal. The minimal logic actually is: UFNRA
 (set-info :smt-lib-version 2.6)
 (set-logic UFNRA)
 (declare-sort $$unsorted 0)
